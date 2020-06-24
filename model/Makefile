@@ -5,7 +5,7 @@ FC 	= /opt/intel/bin/ifort
 FLAGS	= -r8 -align all -i-static -warn nogeneral
 TARGET	= driver
 OBJECTS = driver.o
-WDIR	= /models/williams_ebm/model
+WDIR	= /models/hextor/model
 
 $(TARGET) : $(OBJECTS)
 	$(FC) $(FLAGS) -o $(TARGET) $(OBJECTS)
