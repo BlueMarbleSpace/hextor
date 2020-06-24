@@ -14,8 +14,9 @@ set sep         = "----------------------------------------"
 
 cd $modeldir
 
-echo null > \(
-echo null > AS_NEEDED
+# This was needed to fix an old error with ifort, no longer necessary
+# echo null > \(
+# echo null > AS_NEEDED
 
 make -f Makefile
 
