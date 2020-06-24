@@ -3,10 +3,14 @@
 #---------------------------------------------------------------------------------------------------
 #set echo
 
-set wdir 	= /neptune/s1/jhaqqmis/williams_ebm
+set wdir 	= /models/hextor
 set modeldir 	= $wdir/model
+set plotdir 	= $wdir/plots
 set outdir	= $modeldir/out
 set outfile	= $outdir/model.out
+set sep         = "----------------------------------------"
+
+#---------------------------------------------------------------------------------------------------
 
 cd $modeldir
 
@@ -14,8 +18,21 @@ echo null > \(
 echo null > AS_NEEDED
 
 make -f Makefile
-./driver
 
 #---------------------------------------------------------------------------------------------------
 
+echo $sep
+./driver
+
 head -n 12 $outfile && tail -n 30 $outfile | head -n 5
+head -n 33 $outfile | tail -n 18 > $outdir/zonal.out
+tail -n 18 $outfile > $outdir/geog.out
+
+#---------------------------------------------------------------------------------------------------
+# Uncomment for NCL plots
+#
+# echo $sep
+# cd $plotdir
+#
+# ncl plotZonal.ncl
+# ps2pdf plotZonal.ps && rm plotZonal.ps

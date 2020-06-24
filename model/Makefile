@@ -1,11 +1,11 @@
 #
 # Makefile for Darren Williams' EBM
 #
-FC 	= ifort
-FLAGS	= -r8 -align all -i-static
+FC 	= /opt/intel/bin/ifort
+FLAGS	= -r8 -align all -i-static -warn nogeneral
 TARGET	= driver
 OBJECTS = driver.o
-WDIR	= /neptune/s1/jhaqqmis/williams_ebm/model
+WDIR	= /models/williams_ebm/model
 
 $(TARGET) : $(OBJECTS)
 	$(FC) $(FLAGS) -o $(TARGET) $(OBJECTS)
