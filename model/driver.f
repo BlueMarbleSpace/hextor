@@ -6,11 +6,12 @@ c  atmospheres (e.g. Earth and Mars). Energy balance is treated as in
 c  Caldeira and Kasting (1992). Input files: 'oceans.dat', for
 c  modeling Earth with present geography, and 'fresnel_reflct.dat'.
 c
-c  Last Revision: 11-3-95 DMW 
+c  Original version: 11-3-95 DMW 
 c
 c  Changes made and commented: 06-30-04 JDH
 c
-c  Added namelist input: 05-26-09
+c  Added namelist input: 05-26-09 JDH
+c
 c
 c          lat => latitude (radians)
 c            x => SIN(latitude)
@@ -119,11 +120,13 @@ c  INITIALIZE VARIABLES
       fcloud = 0.5     !fractional cloud cover
       nfile = 0
 
+
       NAMELIST /ebm/ seasons, snowball, tend, dt, rot, a, ecc, peri, 
      &               obl, cloudir, pco2, ocean, igeog, groundalb, 
      &               relsolcon, landsnowfrac, fcloud
       READ( namelistid, NML=ebm )
       CLOSE( namelistid )
+
 
       oblrad = obl*pi/180
       if( snowball ) then
@@ -631,10 +634,10 @@ c  ADJUST PCO2 EVERY 5 SEASONAL CYCLES
       nwthr = 0
       wthr = wco2*ann_wthrateave
       if (wthr.lt.v) goto 725
-c      pco2 = pco2*(1+exp((v-wthr)/v))/2.  ! removed co2 adjusting (JDH)
+c       pco2 = pco2*(1+exp((v-wthr)/v))/2.  ! removed co2 adjusting (JDH)
       goto 730
  725  if(wthr.lt.1.e-2) wthr = 1.
-c      pco2 = 2*pco2*(1-0.5*exp((wthr-v)/wthr))
+c       pco2 = 2*pco2*(1-0.5*exp((wthr-v)/wthr))
 c
 c  ADJUST DIFFUSION COEFFICIENT
       avemol = mp*(28.965+44.*pco2)/(1.+pco2) 
