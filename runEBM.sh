@@ -1,17 +1,19 @@
 #!/bin/csh
-# Runscript for Darren Williams' EBM (2009.06.01 JDH)
+# Runscript for Stochastic EBM (14 Feb 2014 JDH)
 #---------------------------------------------------------------------------------------------------
 #set echo
 
-set wdir 	= /models/hextor
+set wdir 	= /models/stochastic_ebm
 set modeldir 	= $wdir/model
 set plotdir 	= $wdir/plots
 set outdir	= $modeldir/out
 set outfile	= $outdir/model.out
+set namelist    = input.nml
 set sep         = "----------------------------------------"
 
 #---------------------------------------------------------------------------------------------------
 
+cp $wdir/$namelist $modeldir
 cd $modeldir
 
 # This was needed to fix an old error with ifort, no longer necessary
@@ -29,11 +31,15 @@ head -n 12 $outfile && tail -n 30 $outfile | head -n 5
 head -n 33 $outfile | tail -n 18 > $outdir/zonal.out
 tail -n 18 $outfile > $outdir/geog.out
 
+
 #---------------------------------------------------------------------------------------------------
+
+echo $sep
+cd $plotdir
+
 # Uncomment for NCL plots
-#
-# echo $sep
-# cd $plotdir
-#
 # ncl plotZonal.ncl
-# ps2pdf plotZonal.ps && rm plotZonal.ps
+# ncl plotTempSeries.ncl
+# ncl plotDailyAvgTemp.ncl
+# ncl plotDailyLatTemp.ncl
+# ncl plotPowerSpectrum.ncl
