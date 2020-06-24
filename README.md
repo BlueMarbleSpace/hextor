@@ -1,6 +1,6 @@
 # HEXTOR (Habitable EBM for eXoplaneT ObseRvations)
 
-README file for release 2.1.1
+README file for release 3.0.0
 
 1) Edit ./model/Makefile and set the values of the Fortran compiler FC and location of this model WDIR
 
@@ -16,4 +16,8 @@ README file for release 2.1.1
 
 7) Model output is located in ./model/out/, and optional plots are *.eps files in ./plots/
 
--- The file "tempseries.out" lists columns as: time, temperature, pco2, diffusion
+-- The file "tempseries.out" lists columns as: 
+    time, temperature, pg0, pco2, co2condensation, co2liquid, fh2, diffusion
+
+-- CO2 condensation is indicated by a 1 (condensing) or 0 (not condensing) in the file above.
+

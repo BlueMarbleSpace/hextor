@@ -3,7 +3,12 @@
 #---------------------------------------------------------------------------------------------------
 #set echo
 
+#---------------------------------------------------------------------------------------------------
+# Edit this value of wdir to match your system
+
 set wdir 	= /models/hextor
+#---------------------------------------------------------------------------------------------------
+
 set modeldir 	= $wdir/model
 set plotdir 	= $wdir/plots
 set outdir	= $modeldir/out
@@ -38,8 +43,8 @@ echo $sep
 cd $plotdir
 
 # Uncomment for NCL plots
-# ncl plotZonal.ncl
-# ncl plotTempSeries.ncl
-# ncl plotDailyAvgTemp.ncl
-# ncl plotDailyLatTemp.ncl
-# ncl plotPowerSpectrum.ncl
+# ncl -Q plotZonal.ncl
+# ncl -Q plotTempSeries.ncl
+# ncl -Q plotDailyAvgTemp.ncl
+# ncl -Q plotDailyLatTemp.ncl
+# ncl -Q plotPowerSpectrum.ncl

@@ -1,11 +1,15 @@
 #
-# Makefile for Stochastic EBM
+# Makefile for EBM
 #
+
+### Edit FC and WDIR to match your system ###
 FC 	= /opt/intel/bin/ifort
+WDIR	= /models/hextor/model
+#############################################
+
 FLAGS	= -r8 -align all -i-static -warn nogeneral
 TARGET	= driver
 OBJECTS = driver.o
-WDIR	= /models/hextor/model
 
 $(TARGET) : $(OBJECTS)
 	$(FC) $(FLAGS) -o $(TARGET) $(OBJECTS)

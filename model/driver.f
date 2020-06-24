@@ -6,7 +6,18 @@ c  atmospheres (e.g. Earth and Mars). Energy balance is treated as in
 c  Caldeira and Kasting (1992). Input files: 'oceans.dat', for
 c  modeling Earth with present geography, and 'fresnel_reflct.dat'.
 c
-c  Branched into a Stochastic EBM from Darren Williams' EBM (13 Feb 2014)
+c
+c  Updated carbonate-silicate cycle 03-10-15 JDH
+c
+c  Implemented a stochastic mode and time-dependent orbital properties 02-13-14 JDH
+c
+c  Added namelist input: 05-26-09 JDH
+c
+c  Changes made and commented: 06-30-04 JDH
+c
+c  Original version: 11-3-95 DMW
+c
+c
 c
 c
 c          lat => latitude (radians)
@@ -49,20 +60,25 @@ c----------------------------------------------------------------------c
       real*4  lat,latangle,mu,ir,msun,landalb,icealb,irsum,irave,mp,
      &  iravesum,iceline,icelat,icesht
       real*8  ecc,m,e
-c
+
       parameter (nbelts=18)
       parameter (pi=3.14159265,grav=6.6732e-8,msun=1.9891e33)
-      parameter (mp=1.67e-24,q0=1360.,cnvg=1.e-3)
+      parameter (gacc=9.81)
+      parameter (mp=1.67e-24,q0=1360.,cnvg=1.e-2)
       parameter (sbc=5.67e-8,emis=0.64)
       parameter (twopi=2*pi)
-      parameter (niter=50)
+      parameter (niter=10)
+c     parameter (niter=1000)
+c     parameter (niter=3000)
+c     parameter (niter=5000)
+c     parameter (niter=50000)
 c     parameter (niter=2001)
       parameter (niterhalf=1001)
       parameter (niterquarter=1501)
-c   
+   
       common/geogblk/cntrlat(nbelts),cntrlatangle(nbelts),coastlat,
      &   focean(nbelts),lat(0:nbelts+1),latangle(0:nbelts+1),ocean
-c
+
       dimension  temp(0:nbelts+1),c(nbelts),dx(0:nbelts),
      &  tprime(0:nbelts),tprimeave(nbelts),t2prime(nbelts),
      &  x(0:nbelts+1),h20alb(0:90),ir(nbelts),
@@ -70,27 +86,34 @@ c
      &  acloud(nbelts),zntempmin(nbelts),zntempmax(nbelts),area(nbelts),
      &  zntempsum(nbelts),zntempave(0:nbelts+1),zndecmax(nbelts),
      &  zndecmin(nbelts),obstemp(nbelts),iceline(0:5),fice(nbelts),
-     &  wthrate(nbelts),warea(nbelts),imco2(nbelts), diff(nbelts)
-c
+     &  wthrate(nbelts),warea(nbelts),imco2(nbelts), diff(nbelts),
+     &  co2ice(nbelts), co2melt(nbelts), zthick(nbelts),
+     &  znco2icemax(nbelts)
+
       character  header*80,file(0:3)*8
-      logical seasons, last, snowball 
-      logical stochastic, soladj, binary
+      logical seasons, last, snowball, linrad, linalb, cloudalb
+      logical stochastic, soladj, constheatcap, diffadj, iterhalt
+      logical do_cs_cycle, do_h2_cycle, doco2cond, doco2ice 
+      logical doco2albedo, dobandalbedo, doseaweather
       real landsnowfrac, RAND, boxmuller, noisevar
-      real binamp, binperiod, binfreq
-      integer yrcnt, yrstep, ISEED, resfile
+      real seaweather, seawthrate, betaexpsea
+      real outgassing, weathering, betaexp, kact, krun, fn2
+      real pg0, ir2, fh2, co2sat, h2escape, ph2, ncolh2, h2outgas
+      real co2albedo, visalbedo, iralbedo, fvisible, fnearir
+      real kco2ice, rhoco2ice, zmax, geoflux, newfreeze, pco20s
+      integer(kind=8) yrcnt, yrstep, radparam, co2flag
+      integer ISEED, resfile
       integer*4 now(3)
 
       dimension solcon(niter),prec(niter),ecce(niter),
      &  yrlabel(niter),obliq(niter)
        
-
-      data  temp/20*288./       !**use some temperature > 265K, otherwise iceball
+      data  temp/20*273./       !**use some temperature > 265K, otherwise iceball
       data  file/ 'spng.out', 'summ.out', 'fall.out', 'wint.out' /
 
 c  NAMELIST PARAMETERS
       INTEGER namelistid
       OPEN( namelistid, FILE='./input.nml', DELIM='APOSTROPHE' )
-c
 
 c  INITIALIZE VARIABLES
       ann_tempave = 10.         !just some constant greater than zero
@@ -99,9 +122,6 @@ c  INITIALIZE VARIABLES
       snowball = .false.   !if .true. then start as an ice-ball
       stochastic = .false. !if .true. then include stochastic perturbation
       soladj = .false.     !if .true. then include solar forcing adjustment
-      binary = .false.     !if .true. then include binary host star sinusoidal forcing
-      binamp = 0           !amplitude of binary forcing function
-      binperiod = 300      !period of binary orbit (days)
       resfile = 0          !start from previous (1), present Earth (2) hothouse (3), large ice (4)
       tend = 7.e11          !calculation length (sec)
       dt = 8.64e4            !time step (sec)
@@ -128,33 +148,74 @@ c  INITIALIZE VARIABLES
       d0 = 0.58        !thermal diffusion coefficient
       v = 3.3e14  !volcanic outgassing (g/year) [from Holland (1978)]
       wco2 = 9.49e14  !carbonate-silicate weathering constant
-      avemol0 = 28.965*mp  !mean-molecular weight of present atmosphere (g)
+      avemol0 = 28.89*mp  !mean-molecular weight of present atmosphere (g)
       hcp0 = 0.2401    !heat capacity of present atmosphere (cal/g K)
       hcpco2 = 0.2105  !heat capacity of co2 (cal/g K)
+      hcpn2 = .2484     ! heat capacity of n2
+      hcph2 = 3.420      !heat capacity of h2 
+      kco2ice = 0.6      !thermal conductivity of CO2 ice (W/m/K)
+      rhoco2ice = 1600.  !density of CO2 ice (kg/m^3)
       landsnowfrac = 1.0 !snowfall fraction on land
       fcloud = 0.5     !fractional cloud cover
       noisevar = 0.15  ! noise variance (K^2 per year)
       co2forcing = 3.7  ! radiative forcing from doubling co2 (w/m^2)
-      co2double  = 0.   ! number of co2 doublings
+      linrad = .false.   ! set .true. for A+BT absorption
+      linalb = .false.   ! set .true. for constant TOA albedo
+      constheatcap = .false. ! set .true. for constant heat capacity
+      diffadj = .true.  ! set .false. to turn off diffusion parameter adjustment
+      cloudalb = .true. ! set .false. to disable cloud albedo
+      iterhalt = .false.  ! set .true. to enable halt based on iterations
+      do_cs_cycle = .false. !set .true. to enable carbonate-silicate cycle
+      do_h2_cycle = .false. !set .true. to enable H2 cycle
+      doco2cond = .true. ! set .false. to disable CO2 condensation
+      doco2ice = .false. ! set .true. to enable CO2 ice mass balance
+      doco2albedo = .false. ! set .true. to enable CO2 ice albedo
+      co2albedo = 0.30  ! albedo of CO2 ice
+      dobandalbedo = .false. !set .true. to enable 2-band ice albedo
+      visalbedo = 0.90 ! visible albedo for 2-band ice albedo
+      iralbedo = 0.70  ! near-IR albedo for 2-band ice albedo
+      fvisible = 0.60  ! fraction of visible radiation for 2-band ice albedo
+      fnearir  = 0.40  ! fraction of near-IR radiation for 2-band ice albedo
+      geoflux = 0.0    ! geothermal heat flux (W/m^2)
+      outgassing = 7.0  ! volcanic outgassing rate (bars/Gyr)
+      weathering = 7.0  ! weathering rate (bars/Gyr)
+      betaexp = 0.50       ! weathering exponent
+      kact = 0.09       ! activation energy factor
+      krun = 0.045      ! runoff efficiency factor
+      pg0 = 1.0         ! surface pressure (bars)
+      fh2 = 0.0
+      h2outgas = 2.67e12
+      radparam = 0      ! OLR/albedo parameterization: (0) Williams & Kasting, (1) CO2/N2, (2) CO2/H2
+                        ! (3) F-star (4) G-star (5) K-star (6) M-star
+      doseaweather = .false.  ! seafloor weathering
+      seaweather   = 7.0      ! seafloor weathering rate (bars/Gyr)
+      betaexpsea   = 0.0      ! seafloor weathering exponent
+      pco20s = 0.01   !present soil CO2 concentration (bars)
+      !pco20s = 3.3e-4   !present soil CO2 concentration (bars)
       nfile = 0
       yrstep = 1
       yrcnt = 0
       yricnt = 1
-
 
       CALL itime( now )
       CALL SRAND( now(3) )
 
 
       NAMELIST /ebm/ seasons, snowball, tend, dt, rot, a, ecc, peri, 
-     &               obl, cloudir, pco2, ocean, igeog, groundalb, 
+     &               obl, cloudir, ocean, igeog, groundalb, 
      &               relsolcon, landsnowfrac, fcloud, yrstep,
      &               resfile, noisevar, stochastic, soladj, d0,
-     &               co2double, binary, binamp, binperiod
+     &               linrad, linalb, constheatcap, diffadj,
+     &               cloudalb, iterhalt, do_cs_cycle, outgassing, 
+     &               weathering, betaexp, kact, krun, pco2, fh2,
+     &               radparam, do_h2_cycle, h2outgas, doco2cond,
+     &               doco2ice, doco2albedo, co2albedo, dobandalbedo,
+     &               visalbedo, iralbedo, geoflux, doseaweather, 
+     &               seaweather, betaexpsea, pco20s
       READ( namelistid, NML=ebm )
       CLOSE( namelistid )
 
-c 
+ 
 c  OPEN FILES 
       open (unit=2,file='data/oceans.dat',status='old')
       open (unit=3,file='data/fresnel_reflct.dat',status='old')
@@ -167,14 +228,13 @@ c  OPEN FILES
       open (unit=17,file='out/co2clouds.out',status='unknown')
       open (unit=18,file='out/tempseries.out',status='unknown')
       open (unit=19,file='out/icelines.out',status='unknown')
-      open (unit=20,file='out/dailyavg.out',status='unknown')
-      open (unit=21,file='out/daily.out',status='unknown')
+      open (unit=20,file='out/dailytempseries.out',status='unknown')
       open (unit=99,file='data/insolaout.dat',status='old')
-c
+
 c  WRITE OBLIQUITY TO OUTPUT
       write(15,2) 'OBLIQUITY: ', obl, ' degrees'
  2    format(/ a,f5.2,a)
-c
+
 c  WRITE CO2-CLOUD FILE HEADER
       write(17,3)
  3    format(58x,'IMCO2')
@@ -187,6 +247,28 @@ c  WRITE CO2-CLOUD FILE HEADER
 c----------------------------------------------------------------------c
 c SET UP INITIAL TEMPERATURE PROFILE
 
+      ! set partial pressures
+      if( radparam .eq. 1 ) then
+        pn2 = 1.0
+        pg0 = pco2 + pn2
+        ph2 = 0.0
+        fh2 = 0.0
+      else if ( radparam .eq. 2 ) then
+        fn2 = 0.05
+        pg0 = pco2 / ( 1 - fn2 - fh2 )
+        pn2 = fn2 * pg0
+        !pn2 = 1.0
+        !pg0 = pn2+pco2
+        !fn2 =  pn2/pg0
+         ph2 = fh2*pg0
+      else if ( radparam .ge. 3 ) then
+        pn2 = 1.0
+        pg0 = pco2 + pn2
+        ph2 = 0.0
+        fh2 = 0.0
+      end if
+
+
       if( snowball .and. ( resfile .ne. 0 ) ) then
         print *, 'Namelist parameters SNOWBALL and RESFILE cannot
      & both be used.' 
@@ -195,12 +277,14 @@ c SET UP INITIAL TEMPERATURE PROFILE
       end if
   
       if( snowball ) then
-        do k = 1, nbelts, 1
+        do k = 0, nbelts+1, 1
           temp(k) = 233.
         end do
-      end if
-   
-      if( resfile .eq. 1 ) then		!restart from last run
+      else if( resfile .eq. 0 ) then
+        do k = 1, nbelts, 1
+          temp(k) = 273.15
+        end do   
+      else if( resfile .eq. 1 ) then	!restart from last run
         rewind(6)
         do k = 1, nbelts, 1
            read(6,*) temp(k)
@@ -236,28 +320,17 @@ c  SET UP LATITUDINAL GRID (BELT BOUNDARIES)
          cntrlat(k) = lat(0) + (1+2*(k-1))*pi/(2*nbelts)  !**belt centers
          cntrlatangle(k) = cntrlat(k)*180./pi             !**belt centers
  15   continue
-c
+
 c SET UP GEOGRAPHY
       call geog(igeog)
 
 
-c Set variable diffusion coefficient with maximum in tropics (following I.Held)
+c Set diffusion coefficient
       do k = 1, nbelts, 1
-c         sl      = sin( lat(k) )
-c         p4      = (35*sl*sl*sl*sl - 30*sl*sl + 3)/8
-c         diff(k) = d0*(1 - p4)
 
-        d0 = 0.38
-
-        if( ( abs( latangle(k) ) .ge. 40 ) .and. 
-     &      ( abs( latangle(k) ) .le. 60 ) ) then
-          diff(k) = d0
-        else
-          diff(k) = d0 / 1
-        end if
+        diff(k) = d0
 
       end do
-
 
 c----------------------------------------------------------------------c
 c  SET SOLAR CONSTANT, ECCENTRICITY, AND OBLIQUITY
@@ -289,14 +362,14 @@ c **adjust latitude grid to belt centers
          latangle(k) = cntrlatangle(k)
          x(k) = sin(lat(k))
  115  continue
-c
+
 c **calculate grid spacing
       do 125 k = 0,nbelts,1
          dx(k) = abs(x(k+1) - x(k))
  125  continue
-c
+
 c  WRITE GRID DATA TO OUTPUT FILE
-c
+
 c      write(15,140) 
  140  format(/ / '**LATITUDE GRID DATA**')
 c      write(15,142)
@@ -320,19 +393,17 @@ c      write(15,147) 'FRESNEL REFLECTANCE TABLE'
 c         write(15,146) (h20alb(n),n=n1,n2)
  149  continue
       h20alb(90) = 1.00
-c
+
 c----------------------------------------------------------------------c
 c  CALCULATE BELT AREAS - NORMALIZED TO PLANET SURFACE AREA
       do 180 k = 1,nbelts,1
          area(k) = abs(sin(lat(k) + pi/(2*nbelts)) -
      &     sin(lat(k) - pi/(2*nbelts)))/2.
  180  continue
-
-c
 c----------------------------------------------------------------------c
 c  BEGIN INTEGRATION AT VERNAL EQUINOX. FIRST CALCULATE TIME SINCE
 c  PERIHELION.
-c
+
       d = d0  !**initialize diffusion coefficient
       w = (grav*msun)**(0.5)*a**(-1.5)  !2*pi/(orbital period)
 
@@ -342,29 +413,23 @@ c **write to 'co2clouds.out', at most, 1000 times.
       twrite = (2*pi/w)/nwrite
  200  if(seasons) goto 230
       
-      ! Do integration for mean-annual case with variable obliquity
-      ! taken from Ward.  Integration is done in the insolation 
-      ! section and uses a function definied at the bottom of this
-      ! code (JDH)
-      !obl = 0.
-      !dec = 0.
-      !q = q0 * relsolcon
+      !if not seasons, then do mean annual insolation
       q = solcon(yricnt)
       goto 260
-c
+
 c  SEASONS
  230  e = acos((cos(prec(yricnt)*pi/180.)
      &    +ecce(yricnt))/(1.+cos(prec(yricnt)*pi/180.)*ecce(yricnt)))
       m = e - ecce(yricnt)*sin(e)   !**Kepler's Equation
       tperi = -m/w    !**tperi is the time of perihelion (vern.eqnx. is 0)
-c
+
 c      write(15,232)
  232  format(/ 'ORBITAL DATA')
 c      write(15,233) 
  233  format(2x,'time (sec)',2x,'true anomaly (deg)',2x,
      & 'solar declination (deg)',2x,'orbital distance (cm)',2x,
      & 'irradiance (Wm^-2)')
-c
+
  240  if (tcalc.lt.tend) then
          t = t + dt
          tcalc = tcalc + dt
@@ -373,38 +438,33 @@ c
          write(*,*) 'Calculation time has elapsed.'
          goto 1000
       end if
-c
+
       m = w*(t-tperi)
       if (m.gt.2*pi) m = m - 2*pi
-c
+
       call keplereqn(m,ecce(yricnt),e)
       trueanom = acos((cos(e) - ecce(yricnt))/(1 - 
      &   ecce(yricnt)*cos(e)))
-c
+
 c  correct trueanomaly for pi < m < 2pi
       if (m .gt. pi) trueanom = 2*pi-trueanom
-c
+
       r = a*(1-ecce(yricnt)*cos(e))
-      if( binary ) then
-        binfreq = 2*pi / ( binperiod*60*60*24 )
-        q = solcon(yricnt) * (1 + binamp*sin(binfreq*tcalc)) * (a/r)**2
-      else 
-        q = solcon(yricnt) * (a/r)**2
-        !q = q0 * relsolcon * (a/r)**2
-        !q = q0 * relsolcon * (a0/r)**2
-      end if
+      q = solcon(yricnt) * (a/r)**2
+      !q = q0 * relsolcon * (a/r)**2
+      !q = q0 * relsolcon * (a0/r)**2
       thetawin = prec(yricnt)*pi/180 + 3*pi/2
       dec = asin(-sin(obliq(yricnt)*pi/180.)*cos(trueanom-thetawin))
       decangle = dec*180./pi
-c
+
 c      write(15,255) t,trueanom*180./pi,decangle,r,q
  255  format(2x,e9.3,6x,f7.3,14x,f7.3,16x,e11.6,13x,f9.3)
-c
+
       goto 270      !**skip mean-annual stuff if doing seasonal model
-c
+
 c----------------------------------------------------------------------c
 c MEAN-ANNUAL CALCULATION
-c
+
  260  if (tcalc.lt.tend) then
          t = t + dt
          tcalc = tcalc + dt
@@ -413,8 +473,10 @@ c
          write(*,*) 'Calculation time has elapsed.'
          goto 1000
       end if
-c
+
  270  tempsum = 0.
+      tempmaxsum = 0.
+      tempminsum = 0.
       fluxsum = 0.
       albsum = 0.
       irsum = 0.
@@ -426,69 +488,192 @@ c----------------------------------------------------------------------c
 c  **THE BIG LOOP**
 c----------------------------------------------------------------------c
 c  FINITE DIFFERENCING - ATMOSPHERIC and OCEANIC ADVECTIVE HEATING 
-c
+
       do 300 k=0,nbelts,1   !**first derivatives between grid points
          tprime(k) = (temp(k+1) - temp(k))/dx(k)
  300  continue
-c
+
       do 310 k=1,nbelts,1   !**start belt loop 
-c                           !**first derivatives at grid points
+                            !**first derivatives at grid points
          tprimeave(k) = (tprime(k)*dx(k) + tprime(k-1)*
      &      dx(k-1))/(dx(k) + dx(k-1))
-c                           !**second derivatives at grid points
+                            !**second derivatives at grid points
          t2prime(k) = ((((dx(k)/2)**2)-((dx(k-1)/2)**2))*(1-x(k)**2)*
      &      tprimeave(k) + ((dx(k-1)/2)**2)*(1-(x(k)+(dx(k)/2))**2)*
      &      tprime(k) - (((dx(k)/2)**2)*(1-(x(k)-(dx(k-1)/2))**2))*
      &      tprime(k-1))/((dx(k)/2)*(dx(k-1)/2)*(dx(k)/2 + dx(k-1)/2)) 
-c
+
+
 c----------------------------------------------------------------------c
 c  OUTGOING INFRARED (Obtained from fits to Jim Kasting's radiative
 c    -convective model earthtem_ir. The fit can be applied for
 c    190 < T < 370 K and 10^-5 < PCO2 < 10 bars with an rms error
 c    of 4.59 Wm^-2.)                                 
-c
-c  Use the Stefan-Boltzman law for outgoing IR
-c      ir(k) = sbc*temp(k)*temp(k)*temp(k)*temp(k)*emis
 
-c  Use a linear relationship for outgoing IR following North et al. 1981
+      if ( linrad ) then
 
-      if( yricnt .ge. niterhalf ) then
-c       ir(k) = 203.3-(co2forcing*co2double) + 2.09*(temp(k) - 273.15)
-
-        if( yricnt .ge. niterquarter ) then
-          ir(k) = 203.3 + 2.09*(temp(k) - 273.15)
-        else
-          ir(k) = 203.3-(co2forcing*co2double)*(3-(yricnt/500.0)) + 
-     &            2.09*(temp(k) - 273.15)
-        end if
+      !use a linear relationship for outgoing IR following North et al. 1981
+      ir(k) = 203.3 + 2.09*(temp(k) - 273.15)
 
       else
-        ir(k) = 203.3 + 2.09*(temp(k) - 273.15)
+
+      !use an interpolated relationship for outgoing IR
+      if ( radparam .eq. 0 ) then 
+
+        phi = log(pco2/3.3e-4)
+     
+      ! interpolation from Williams & Kasting (1997)
+      ir(k) = -3.102011e-2 - 7.714727e-5*phi -
+     &  3.547406e-4*phi**2 - 3.442973e-3*phi**3 -
+     &  3.367567e-2*phi**4 - 2.794778*temp(k) - 
+     &  3.244753e-3*phi*temp(k) + 2.229142e-3*phi**2*temp(k) + 
+     &  9.173169e-3*phi**3*temp(k) - 1.631909e-4*phi**4*temp(k) + 
+     &  2.212108e-2*temp(k)**2 + 3.088497e-5*phi*temp(k)**2 - 
+     &  2.789815e-5*phi**2*temp(k)**2 - 7.775195e-5*phi**3*temp(k)**2 + 
+     &  3.663871e-6*phi**4*temp(k)**2 - 3.361939e-5*temp(k)**3 - 
+     &  1.679112e-7*phi*temp(k)**3 + 6.590999e-8*phi**2*temp(k)**3 + 
+     &  1.528125e-7*phi**3*temp(k)**3 - 9.255646e-9*phi**4*temp(k)**3
+
+      else if ( radparam .eq. 1 ) then
+   
+        if ( doco2ice ) then
+          phi = log10( pco2 - co2ice(k) )
+        else
+          phi = log10( pco2 )
+        end if
+        tmpk = log10( temp(k) )   
+
+        ! Updated interpolation for CO2-dominated atmospheres (2015)
+        term1=8.31425009785720803279e+00*tmpk**4+
+     &  8.40111812576741634473e+00*tmpk**3*phi-
+     &  7.20889378557585018825e+01*tmpk**3+
+     &  9.27250707901223991669e-01*tmpk**2*phi**2-
+     &  5.45101996969859712294e+01*tmpk**2*phi+
+     &  2.34312071020079656591e+02*tmpk**2-
+     &  1.72985690812803238892e-01*tmpk*phi**3-
+     &  5.31819979906857742691e+00*tmpk*phi**2+
+     &  1.15145551793545493524e+02*tmpk*phi
+
+        term2=-3.36759529484533402410e+02*tmpk+
+     &  1.03341023690065331869e-02*phi**4+
+     &  4.62978730291089213278e-01*phi**3+
+     &  7.43991998573408519491e+00*phi**2-
+     &  7.87033076292617721492e+01*phi+
+     &  1.84241516203608512114e+02
+
+      ir(k) = 10**(term1 + term2) / 1000.
+
+      else if ( radparam .eq. 2 ) then
+
+        if ( doco2ice ) then
+          phi = log10( pg0 - co2ice(k) )
+        else
+          phi = log10( pg0 )
+        end if
+        tmpk = log10( temp(k) )   
+
+        term1=4.76808656814761633314e+01*tmpk**4+
+     &  5.49935481767358158578e+00*tmpk**3*fh2-
+     &  1.09429061839906305309e+00*tmpk**3*phi-
+     &  4.78173291533181611612e+02*tmpk**3+
+     &  8.49190549496696478471e-01*tmpk**2*fh2**2+
+     &  1.37765937761845114196e+00*tmpk**2*fh2*phi-
+     &  3.66017123367183145888e+01*tmpk**2*fh2+
+     &  2.39017525956834697709e+00*tmpk**2*phi**2+
+     &  1.94856225493008743399e+01*tmpk**2*phi
+
+        term2=+1.79716986886717290872e+03*tmpk**2-
+     &  5.08081407778601223946e-01*tmpk*fh2**3+
+     &  3.00410810274085282590e-01*tmpk*fh2**2*phi-
+     &  3.10430848409695459011e+00*tmpk*fh2**2-
+     &  4.70658106780907359301e-02*tmpk*fh2*phi**2-
+     &  6.75476435103275996141e+00*tmpk*fh2*phi+
+     &  8.02983658642542934558e+01*tmpk*fh2-
+     &  2.78693163775443009111e-01*tmpk*phi**3-
+     &  1.28002847689644276841e+01*tmpk*phi**2-
+     &  7.61706327338787190229e+01*tmpk*phi
+
+        term3=-2.99763768092468944815e+03*tmpk-
+     &  4.64112012085224553970e-02*fh2**4+
+     &  1.80172294709195594808e-02*fh2**3*phi+
+     &  1.31650299007109294891e+00*fh2**3-
+     &  1.53163365643916478398e-02*fh2**2*phi**2-
+     &  8.55693979833223372644e-01*fh2**2*phi+
+     &  2.28114230486580993329e+00*fh2**2+
+     &  1.79311735513174204393e-02*fh2*phi**3+
+     &  1.34635973577179490768e-01*fh2*phi**2+
+     &  8.13967439897796829484e+00*fh2*phi
+
+        term4=-5.80918681555363392022e+01*fh2+
+     &  1.83043738623349175332e-02*phi**4+
+     &  7.45155230077319874482e-01*phi**3+
+     &  1.69576563201193479813e+01*phi**2+
+     &  8.54071288991185468831e+01*phi+
+     &  1.87594411270478985898e+03
+
+      ir(k) = 10**(term1 + term2 + term3 + term4) / 1000.
+
+      else if ( radparam .eq. 3 ) then   
+
+        fvisible = 0.67
+        fnearir  = 0.33
+        if ( doco2ice ) then
+          phi = log10( pco2 - co2ice(k) )
+        else
+          phi = log10( pco2 )
+        end if
+        tmpk = log10( temp(k) )   
+        INCLUDE './data/write_Fortran_OLR7200K.dat'
+        ir(k) = 10**(term1 + term2) / 1000.
+
+      else if ( radparam .eq. 4 ) then   
+
+        fvisible = 0.52
+        fnearir  = 0.48
+        if ( doco2ice ) then
+          phi = log10( pco2 - co2ice(k) )
+        else
+          phi = log10( pco2 )
+        end if
+        tmpk = log10( temp(k) )  
+        INCLUDE './data/write_Fortran_OLR5800K.dat'
+        ir(k) = 10**(term1 + term2) / 1000.
+
+      else if ( radparam .eq. 5 ) then   
+
+        fvisible = 0.32
+        fnearir  = 0.68
+        if ( doco2ice ) then
+          phi = log10( pco2 - co2ice(k) )
+        else
+          phi = log10( pco2 )
+        end if
+        tmpk = log10( temp(k) )   
+        INCLUDE './data/write_Fortran_OLR4600K.dat'
+        ir(k) = 10**(term1 + term2) / 1000.
+
+      else if ( radparam .eq. 6 ) then   
+
+        fvisible = 0.10
+        fnearir  = 0.90
+        if ( doco2ice ) then
+          phi = log10( pco2 - co2ice(k) )
+        else
+          phi = log10( pco2 )
+        end if
+        tmpk = log10( temp(k) )   
+        INCLUDE './data/write_Fortran_OLR3400K.dat'
+        ir(k) = 10**(term1 + term2) / 1000.
+
       end if
 
-c      if ( temp(k) .le. 190.0 ) then
-c        print *, k, ": ", temp(k), " Temp too low"
-c      else if ( temp(k) .ge. 370.0 ) then
-c        print *, k, ": ", temp(k), " Temp too high"
-c      end if
-c
-c      phi = log(pco2/3.3e-4)
-c      ir(k) = -3.102011e-2 - 7.714727e-5*phi -
-c     &  3.547406e-4*phi**2 - 3.442973e-3*phi**3 -
-c     &  3.367567e-2*phi**4 - 2.794778*temp(k) - 
-c     &  3.244753e-3*phi*temp(k) + 2.229142e-3*phi**2*temp(k) + 
-c     &  9.173169e-3*phi**3*temp(k) - 1.631909e-4*phi**4*temp(k) + 
-c     &  2.212108e-2*temp(k)**2 + 3.088497e-5*phi*temp(k)**2 - 
-c     &  2.789815e-5*phi**2*temp(k)**2 - 7.775195e-5*phi**3*temp(k)**2 + 
-c     &  3.663871e-6*phi**4*temp(k)**2 - 3.361939e-5*temp(k)**3 - 
-c     &  1.679112e-7*phi*temp(k)**3 + 6.590999e-8*phi**2*temp(k)**3 + 
-c     &  1.528125e-7*phi**3*temp(k)**3 - 9.255646e-9*phi**4*temp(k)**3
-c
-c      ir(k) = ir(k) - cloudir   !**reduction of outgoing-infrared by clouds
-c
+        ir(k) = ir(k) - cloudir   !**reduction of outgoing-infrared by clouds
+
+      end if
+
 c----------------------------------------------------------------------c
 c  DIURNALLY-AVERAGED ZENITH ANGLE                            
-c
+
       if ((tan(dec)*tan(asin(x(k)))).ge.1.) then 
          h = pi
          mu(k) = x(k)*sin(dec) + cos(asin(x(k)))*cos(dec)*sin(h)/h
@@ -499,71 +684,63 @@ c
          h = acos(-x(k)*tan(dec)*((1-x(k)**2)**(-0.5)))
          mu(k) = x(k)*sin(dec) + cos(asin(x(k)))*cos(dec)*sin(h)/h
       end if
-c  
+  
       z = acos(mu(k))*180./pi
       zrad = acos(mu(k))
-c                 
+                 
 c----------------------------------------------------------------------c
 c  HEAT CAPACITY and SURFACE ALBEDO                    
-c
-      oceanalb = h20alb(int(z))
 
+      oceanalb = h20alb(int(z))
 
       ! Added this check so fractional ice cover would only 
       ! occur for 263 < T < 273.  (JDH)
-c      if(focean(k).ge.0.5) then        
-c         if (temp(k).ge.238.15) then
-c            fice(k) = 0
-c         else if (temp(k).le.238.15) then
-c            fice(k) = 1
-c         else
-c            !fice(k) = 1. - exp((temp(k)-273.15)/10.)
-c            fice(k) = 0.1*(248.15 - temp(k)) ! uncomment for a linear decrease
-c         end if 
-c      else
-         if (temp(k).ge.273.15) then
-            fice(k) = 0
-         else if (temp(k).lt.263.15) then
-            fice(k) = 1
-         else
-            fice(k) = 0
-c            fice(k) = 1. - exp((temp(k)-273.15)/10.)
-         end if
-c      end if   
- 
+      if (temp(k).ge.273.15) then
+         fice(k) = 0
+      else if (temp(k).lt.263.15) then
+         fice(k) = 1
+      else
+         fice(k) = 1. - exp((temp(k)-273.15)/10.)
+      end if
 
-c      acloud(k) = alpha + beta*zrad
-      acloud(k) = 0.0                 !removed cloud albedo
-      if (temp(k).le.263.15) goto 420
-c      if (temp(k).le.273.15) goto 420 !removed variable snow albedo (JDH)
-      !if (temp(k).le.273.15) goto 410
-c
+      if ( cloudalb ) then
+        acloud(k) = alpha + beta*zrad
+      else
+        acloud(k) = 0.0 
+      end if
+
+      if (temp(k).le.273.15) goto 415
+
       landalb = groundalb
       fice(k) = 0.
       fwthr = 1.       !**100% if T > 273K, 0% otherwise
       c(k) = focean(k)*cw + (1 - focean(k))*cl
       goto 430
-c
-c LAND WITH UNSTABLE SNOW COVER; SEA-ICE FORMS
- 410  snowalb = 0.45
-      landalb = snowalb
-      icealb = 0.55
-      ci = 4.846e7
-      c(k) = (1-fice(k))*focean(k)*cw + fice(k)*focean(k)*ci + 
-     &  (1 - focean(k))*cl
-      fwthr = 0.
-      goto 430
-c
+
+c CO2 ICE ALBEDO IF CO2 IS CONDENSING AT SURFACE
+ 415  if ( doco2albedo ) then
+        CALL SATCO2( temp(k), co2sat )
+        if ( pco2 .gt. co2sat ) then
+          snowalb = co2albedo
+          goto 421
+        end if
+      end if
+
+      if ( dobandalbedo ) then
+        snowalb = fvisible*visalbedo + fnearir*iralbedo
+        goto 421
+      end if
+
 c LAND WITH STABLE SNOW COVER; SEA-ICE WITH SNOW COVER
  420  snowalb = 0.663  ! changed this from 0.7 as per Caldiera & Kasting (JDH)
-      landalb = snowalb*landsnowfrac + groundalb*(1 - landsnowfrac)
+ 421  landalb = snowalb*landsnowfrac + groundalb*(1 - landsnowfrac)
       icealb = snowalb
 
       ci = 1.05e7
       c(k) = (1-fice(k))*focean(k)*cw + fice(k)*focean(k)*ci + 
      &  (1 - focean(k))*cl
       fwthr = 0.
-c
+
       ! Added this conditional: if T < 273 then choose the max
       ! between the ice albedo and the cloud albedo (JDH)
  430  if (temp(k).ge.273.15) then         
@@ -577,59 +754,21 @@ c
      &        fcloud*acloud(k))
       end if      
 
-c      surfalb(k) = (1-fcloud)*((1-focean(k))*landalb +   
-c     &     focean(k)*((1-fice(k))*oceanalb + fice(k)*icealb)) + 
-c     &     fcloud*acloud(k)
-      
-c
-      if(.not.last) goto 450
-c
-c----------------------------------------------------------------------c
-c  CO2 CLOUDS, IF LAST LOOP
-      tstrat = -188.0968076496237 - 1.954500243043531*phi +
-     &  3.809523755282467*phi**2 + 2.327695124784982*temp(k) + 
-     &  0.0003732556589321478*phi*temp(k) -
-     &  0.02855747090737606*phi**2*temp(k) -
-     &  0.00332927322412119*temp(k)**2 + 
-     &  0.00002213983847712599*phi*temp(k)**2 + 
-     &  0.0000460529090383333*phi**2*temp(k)**2
-c
-      nh = 0
-      tlapse = 6.5    !**degrees Kelvin per kilometer
- 442  htemp = temp(k) - tlapse*nh
-      if (htemp.lt.tstrat) goto 450
-c
-      hpco2 = pco2*((temp(k)-tlapse*nh)/temp(k))**
-     &  (avemol*981./(1.38e-16*tlapse*1.e-5))
-c
-c  SUBROUTINE SATCO2 from Jim Kasting "earthtem_0.f"
-      if (htemp.lt.216.56) goto 445
-c
-c   VAPOR PRESSURE OVER LIQUID
-      psl = 3.128082 - 867.2124/htemp + 1.865612e-2*htemp -
-     &  7.248820e-5*htemp**2 + 9.3e-8*htemp**3
-c
-c   VAPOR PRESSURE OVER SOLID
-c   (Altered to match vapor pressure over liquid at triple point)
- 445  psl = 6.760956-1284.07/(htemp-4.718) + 1.256e-4*(htemp-143.15)
-c
-      patm = 10.**psl
-      psat = 1.013*patm
-c
-      imco2(k) = 0.
-      if (hpco2.ge.psat) then      !**co2 clouds form
-         imco2(k) = 1.
-         goto 450
-      end if
-      nh = nh + 1
-      goto 442
-c
+c      if(.not.last) goto 450
 c----------------------------------------------------------------------c
 c  CARBONATE-SILICATE WEATHERING
  450  warea(k) = area(k)*(1-focean(k))*fwthr
-      wthrate(k) = warea(k)*(1+0.087*(temp(k)-288.) + 
-     &   1.862e-3*(temp(k)-288.)**2)
-c
+
+      !carbonate-silicate cycle on long time scale, following Menou (2014)
+      if ( temp(k) .ge. 273.15 ) then
+c        wthrate(k) = warea(k)*weathering*((pco2/pco20)**betaexp)
+c     &   *exp(kact*(temp(k)-288.))*(1+(krun*(temp(k)-288.)))**0.65
+        wthrate(k) = warea(k)*weathering*((pco2/pco20s)**betaexp)
+     &   *exp(kact*(temp(k)-288.))*(1+(krun*(temp(k)-288.)))**0.65
+      else
+        wthrate(k) = 0.0
+      end if
+
 c----------------------------------------------------------------------c
 c  TOP-OF-ATMOSPHERE ALBEDO (Obtained from fits to Jim Kasting's radiative
 c    -convective model 'earthtem_alb.' Both fits can be applied for
@@ -637,72 +776,362 @@ c    10^-5 < pco2 < 10 bars, 0 < surfalb < 1, and 0 < z < 90 degrees
 c    with r.m.s. errors (given in planetary-average incident solar
 c    flux {340 W/m^-2}) of 7.58 and 4.66 Watts/m^2 for the low and
 c    high temperature regimes respectively.
-c
-c
-c  Set TOA albedo to surface albedo (JDH)
-       atoa(k) = surfalb(k)
 
-c      as = surfalb(k)
-c      ! Added this check for out of range temperatures (JDH)
-c      if(temp(k).ge.370) then
-c         print *, 'Temp too high!:',k, temp(k)
-c         goto 530
-c      end if
-c      if(temp(k).ge.280.) goto 520   !**goto high-temp fit
-c
-c      atoa(k) = -6.891041e-1 + 1.046004*as + 7.323946e-2*as**2 - 
-c     &   2.889937e-1*mu(k)+2.012211e-1*as*mu(k)+8.121773e-2*mu(k)**2 -  
-c     &   2.837280e-3*pco2 - 3.741199e-2*as*pco2 - 
-c     &   6.349855e-3*mu(k)*pco2 + 6.581704e-4*pco2**2 + 
-c     &   7.805398e-3*temp(k) - 1.850840e-3*as*temp(k) + 
-c     &   1.364872e-4*mu(k)*temp(k) + 9.858050e-5*pco2*temp(k) - 
-c     &   1.655457e-5*temp(k)**2
-c      goto 530
-c
-c 520  atoa(k) = 1.108210 + 1.517222*as + 7.588651e-2*as**2 - 
-c     &   1.867039e-1*mu(k)+2.098557e-1*as*mu(k)+6.329810e-2*mu(k)**2 +  
-c     &   1.970523e-2*pco2 - 3.135482e-2*as*pco2 - 
-c     &   1.021418e-2*mu(k)*pco2 - 4.132671e-4*pco2**2 - 
-c     &   5.79932e-3*temp(k) - 3.709826e-3*as*temp(k) - 
-c     &   1.133523e-4*mu(k)*temp(k) + 5.371405e-5*pco2*temp(k) + 
-c     &   9.269027e-6*temp(k)**2
-c 530  continue
-c
+      as = surfalb(k)
+c      as = .216   
+
+      if ( linalb ) then 
+        !set TOA albedo to surface albedo (JDH)
+        atoa(k) = surfalb(k)
+      else 
+
+      if ( radparam .eq. 0 ) then
+     
+      ! albedo fits from Williams & Kasting (1997)
+      if(temp(k).ge.280.) goto 520   !**goto high-temp fit
+
+      atoa(k) = -6.891041e-1 + 1.046004*as + 7.323946e-2*as**2 - 
+     &   2.889937e-1*mu(k)+2.012211e-1*as*mu(k)+8.121773e-2*mu(k)**2 -  
+     &   2.837280e-3*pco2 - 3.741199e-2*as*pco2 - 
+     &   6.349855e-3*mu(k)*pco2 + 6.581704e-4*pco2**2 + 
+     &   7.805398e-3*temp(k) - 1.850840e-3*as*temp(k) + 
+     &   1.364872e-4*mu(k)*temp(k) + 9.858050e-5*pco2*temp(k) - 
+     &   1.655457e-5*temp(k)**2
+      goto 530
+
+ 520  atoa(k) = 1.108210 + 1.517222*as + 7.588651e-2*as**2 - 
+     &   1.867039e-1*mu(k)+2.098557e-1*as*mu(k)+6.329810e-2*mu(k)**2 +  
+     &   1.970523e-2*pco2 - 3.135482e-2*as*pco2 - 
+     &   1.021418e-2*mu(k)*pco2 - 4.132671e-4*pco2**2 - 
+     &   5.79932e-3*temp(k) - 3.709826e-3*as*temp(k) - 
+     &   1.133523e-4*mu(k)*temp(k) + 5.371405e-5*pco2*temp(k) + 
+     &   9.269027e-6*temp(k)**2
+ 530  continue
+
+      else if ( radparam .eq. 1 ) then
+
+        if ( doco2ice ) then
+          phi = log10( pco2 - co2ice(k) )
+        else
+          phi = log10( pco2 )
+        end if
+        tmpk = log10( temp(k) )
+
+        ! updated albedo fits for CO2/N2 atmospheres (2015)
+        if ( temp(k) .le. 250 ) then
+
+        term1 =-3.80922339639159390767e-01*mu(k)**3-
+     &  6.86181617120208420246e-01*mu(k)**2*as+
+     &  2.31793230316548221071e-01*mu(k)**2*tmpk-
+     &  2.36223436336026049176e-02*mu(k)**2*phi+
+     &  7.67301400772310682186e-01*mu(k)**2+
+     &  6.28824306230756496783e-02*mu(k)*as**2-
+     &  1.78348383597633913800e-01*mu(k)*as*tmpk-
+     &  2.37093058356872832260e-02*mu(k)*as*phi+
+     &  1.42993398589078402061e+00*mu(k)*as
+
+        term2=-9.42874140148848183252e-01*mu(k)*tmpk**2+
+     &  1.58597859799572450668e-02*mu(k)*tmpk*phi+
+     &  4.17871254486884513568e+00*mu(k)*tmpk+
+     &  2.93837265687994829769e-03*mu(k)*phi**2+
+     &  9.72952667477233745785e-03*mu(k)*phi-
+     &  5.97332227647180502572e+00*mu(k)+
+     &  4.43312679710318527371e-02*as**3-
+     &  5.01823197516588874467e-03*as**2*tmpk+
+     &  2.66700143595150242215e-02*as**2*phi+
+     &  1.87706863898554551784e-02*as**2
+
+        term3=-3.17215890172350567511e+00*as*tmpk**2+
+     &  1.55888179766147973171e-02*as*tmpk*phi+
+     &  1.44250066694850413995e+01*as*tmpk-
+     &  3.08351412489488475865e-02*as*phi**2-
+     &  1.85426061631201261060e-01*as*phi-
+     &  1.60883135091017592799e+01*as-
+     &  1.17673787301924637205e+01*tmpk**3+
+     &  2.22840757353930218887e-01*tmpk**2*phi+
+     &  8.21723621055410262670e+01*tmpk**2+
+     &  1.59651944857305064240e-02*tmpk*phi**2
+
+        term4=-9.81711981544405865030e-01*tmpk*phi-
+     &  1.91137300771063621596e+02*tmpk+
+     &  2.31632261445296507019e-03*phi**3-
+     &  1.05856783039563161208e-02*phi**2+
+     &  1.14830209690318607585e+00*phi+
+     &  1.48662609849158229736e+02
+
+        else
+
+        term1 =-5.04232716745127151903e-01*mu(k)**3-
+     &  3.33831975323527430088e-01*mu(k)**2*as+
+     &  1.10989674004723704037e+00*mu(k)**2*tmpk-
+     &  5.12985634933501161159e-02*mu(k)**2*phi-
+     &  1.37002953772578139890e+00*mu(k)**2+
+     &  7.42133599320679293587e-02*mu(k)*as**2-
+     &  1.54926696559962251420e+00*mu(k)*as*tmpk-
+     &  3.65656241697920325606e-02*mu(k)*as*phi+
+     &  4.34163847358376830954e+00*mu(k)*as
+
+        term2=+2.66525684665264384066e+00*mu(k)*tmpk**2-
+     &  4.76404344529663126284e-02*mu(k)*tmpk*phi-
+     &  1.39651863088575627359e+01*mu(k)*tmpk+
+     &  6.66267692133716647046e-03*mu(k)*phi**2+
+     &  2.08349173453556052449e-01*mu(k)*phi+
+     &  1.69542841293293449212e+01*mu(k)+
+     &  7.46932461848770906654e-02*as**3-
+     &  1.83677092125004437495e-01*as**2*tmpk+
+     &  2.57348239818812260515e-02*as**2*phi+
+     &  3.93925768617288063478e-01*as**2
+
+        term3=-3.95929907396172842127e+00*as*tmpk**2+
+     &  3.29522425670107643736e-01*as*tmpk*phi+
+     &  1.84045452486614244947e+01*as*tmpk-
+     &  3.13359092463711685905e-02*as*phi**2-
+     &  9.42011930045157264146e-01*as*phi-
+     &  2.10503344700073924400e+01*as+
+     &  3.29676405480184655516e+01*tmpk**3+
+     &  7.90783265312129834967e-01*tmpk**2*phi-
+     &  2.46889915210692521441e+02*tmpk**2+
+     &  8.30108618133403586281e-02*tmpk*phi**2
+
+        term4=-3.72584714043850429022e+00*tmpk*phi+
+     &  6.15857421042532109823e+02*tmpk+
+     &  4.09373012948141025424e-03*phi**3-
+     &  1.69079209243857525591e-01*phi**2+
+     &  4.45447135967024365755e+00*phi-
+     &  5.11168467178811397389e+02
+
+        end if
+
+        atoa(k) = term1 + term2 + term3 + term4 
+
+      else if ( radparam .eq. 2 ) then
+
+        if ( doco2ice ) then
+          phi = log10( pg0 - co2ice(k) )
+        else
+          phi = log10( pg0 )
+        end if
+        tmpk = log10( temp(k) )
+
+        ! updated albedo fits for CO2/H2 atmospheres (2015)
+        if ( temp(k) .le. 250 ) then
+
+        term1 =-3.41881382273888756451e-01*mu(k)**3-
+     &  7.82426187892112934286e-01*mu(k)**2*as-
+     &  2.98234592912095253237e-01*mu(k)**2*tmpk-
+     &  1.04812948671497343373e-02*mu(k)**2*fh2+
+     &  8.78831353460830799751e-03*mu(k)**2*phi+
+     &  1.99493626489599984453e+00*mu(k)**2+
+     &  4.00889848532216958032e-02*mu(k)*as**2-
+     &  2.63781358942446579607e-02*mu(k)*as*tmpk-
+     &  1.13738660707575038600e-02*mu(k)*as*fh2
+
+        term2=-5.92075899402270330873e-02*mu(k)*as*phi+
+     &  1.16592410386607769901e+00*mu(k)*as+
+     &  3.05817932525109226205e+00*mu(k)*tmpk**2+
+     &  4.55404679827312378060e-02*mu(k)*tmpk*fh2-
+     &  4.09807970694542444967e-01*mu(k)*tmpk*phi-
+     &  1.44076413354266730238e+01*mu(k)*tmpk-
+     &  5.90864025206625214509e-03*mu(k)*fh2**2-
+     &  1.37541407363503485201e-03*mu(k)*fh2*phi-
+     &  9.09945469993787836582e-02*mu(k)*fh2+
+     &  1.64338897369647428393e-02*mu(k)*phi**2
+
+        term3=+1.00187017644873965772e+00*mu(k)*phi+
+     &  1.56017563623685315832e+01*mu(k)+
+     &  4.37284669736712483523e-02*as**3+
+     &  1.43728397075257047916e-02*as**2*tmpk+
+     &  1.08542075534173851001e-03*as**2*fh2+
+     &  5.62908389505368811356e-02*as**2*phi-
+     &  5.96205015905240578306e-03*as**2-
+     &  3.37641094945521613724e+00*as*tmpk**2-
+     &  8.30553802255556555822e-02*as*tmpk*fh2+
+     &  3.93819274461570598134e-03*as*tmpk*phi
+
+        term4=+1.52729776360046312078e+01*as*tmpk-
+     &  6.64563123009531860064e-03*as*fh2**2+
+     &  4.09531648961306438822e-03*as*fh2*phi+
+     &  2.06557952087644880468e-01*as*fh2-
+     &  5.19553098335195778779e-02*as*phi**2-
+     &  2.68917955568870714611e-01*as*phi-
+     &  1.70134666260915210501e+01*as-
+     &  2.05383049531839283475e+01*tmpk**3-
+     &  8.51825973656873070006e-01*tmpk**2*fh2+
+     &  1.17558766493159172484e+00*tmpk**2*phi
+
+        term5=+1.41908353208508884791e+02*tmpk**2-
+     &  6.20670129333104891867e-02*tmpk*fh2**2+
+     &  6.82602368680743920581e-02*tmpk*fh2*phi+
+     &  4.06748498001836988891e+00*tmpk*fh2-
+     &  5.91040203477738376736e-02*tmpk*phi**2-
+     &  5.35717146939420985063e+00*tmpk*phi-
+     &  3.26479492305605447200e+02*tmpk+
+     &  7.32643081307610393588e-03*fh2**3-
+     &  1.79603740710287279082e-03*fh2**2*phi+
+     &  1.41628420988978820372e-01*fh2**2
+
+        term6=-2.36279193983561118172e-03*fh2*phi**2-
+     &  1.65259997145445591826e-01*fh2*phi-
+     &  4.85728489815857855660e+00*fh2+
+     &  4.95864284669994548338e-03*phi**3+
+     &  1.82075298055801054753e-01*phi**2+
+     &  6.24336067599479171975e+00*phi+
+     &  2.50680778713592985696e+02
+
+        else
+
+        term1 =-3.64953635588242231158e-01*mu(k)**3-
+     &  3.36184863117452492620e-01*mu(k)**2*as+
+     &  7.42855566182375470774e-01*mu(k)**2*tmpk+
+     &  2.35250045071474329569e-03*mu(k)**2*fh2+
+     &  1.03140984013693603333e-02*mu(k)**2*phi-
+     &  7.50158525635715056623e-01*mu(k)**2+
+     &  6.19678741078302092182e-02*mu(k)*as**2-
+     &  1.88843608069845148023e+00*mu(k)*as*tmpk-
+     &  3.51228279746902474767e-02*mu(k)*as*fh2
+
+        term2=-6.59746479346320358061e-02*mu(k)*as*phi+
+     &  5.16167787639029462810e+00*mu(k)*as-
+     &  2.12155537739597477298e+00*mu(k)*tmpk**2-
+     &  7.85503169940939272031e-02*mu(k)*tmpk*fh2+
+     &  1.67083962229760435436e-01*mu(k)*tmpk*phi+
+     &  1.04507082880023816074e+01*mu(k)*tmpk-
+     &  6.71874522052537132694e-03*mu(k)*fh2**2+
+     &  4.54865891120825524552e-03*mu(k)*fh2*phi+
+     &  2.12861526648225163338e-01*mu(k)*fh2+
+     &  1.72902842337580193999e-02*mu(k)*phi**2
+
+        term3=-3.91468482134287643071e-01*mu(k)*phi-
+     &  1.39550191937482175319e+01*mu(k)+
+     &  7.66012173959446096561e-02*as**3-
+     &  5.33258519884163770253e-02*as**2*tmpk-
+     &  3.24457891729390632968e-03*as**2*fh2+
+     &  2.59435678221003190869e-02*as**2*phi+
+     &  5.62019786112206570783e-02*as**2-
+     &  5.97292118888921041986e+00*as*tmpk**2-
+     &  3.87009770489884163958e-01*as*tmpk*fh2+
+     &  7.19742438017603736178e-01*as*tmpk*phi
+
+        term4=+2.84282223773413313950e+01*as*tmpk-
+     &  3.66795093171868660797e-02*as*fh2**2+
+     &  1.73632089463807148810e-02*as*fh2*phi+
+     &  9.70804413891795059399e-01*as*fh2-
+     &  3.25015124546070566236e-02*as*phi**2-
+     &  1.93009348053676799140e+00*as*phi-
+     &  3.35460424111451231965e+01*as+
+     &  4.25837679307632441805e+01*tmpk**3+
+     &  2.33414006785506211727e+00*tmpk**2*fh2-
+     &  4.63279637872022642675e-01*tmpk**2*phi
+
+        term5=-3.12848837120424946079e+02*tmpk**2-
+     &  1.10661505683727779542e-02*tmpk*fh2**2+
+     &  6.43891660759138700909e-02*tmpk*fh2*phi-
+     &  1.13498362686029636848e+01*tmpk*fh2+
+     &  1.50766229910903215572e-01*tmpk*phi**2+
+     &  2.22835151136342046740e+00*tmpk*phi+
+     &  7.65279777491220670527e+02*tmpk-
+     &  2.97440540952105363093e-02*fh2**3+
+     &  5.87836752705261922358e-03*fh2**2*phi+
+     &  6.57729484225070132331e-02*fh2**2
+
+        term6=+3.35025642146789467968e-03*fh2*phi**2-
+     &  1.58732057910619589469e-01*fh2*phi+
+     &  1.37637199533833634035e+01*fh2+
+     &  3.67386094751287863372e-03*phi**3-
+     &  3.39029543003353861508e-01*phi**2-
+     &  2.53878600425094846926e+00*phi-
+     &  6.22751304763008533882e+02
+
+        end if
+
+        atoa(k) = term1 + term2 + term3 + term4 + term5 + term6
+
+      else if ( radparam .eq. 3 ) then
+
+        if ( doco2ice ) then
+          phi = log10( pco2 - co2ice(k) )
+        else
+          phi = log10( pco2 )
+        end if
+        tmpk = log10( temp(k) )
+        if ( temp(k) .le. 250 ) then
+          INCLUDE './data/write_Fortran_alb7200K_250.dat'
+        else
+          INCLUDE './data/write_Fortran_alb7200K_350.dat'
+        end if
+        atoa(k) = term1 + term2 + term3 + term4
+
+      else if ( radparam .eq. 4 ) then
+
+        if ( doco2ice ) then
+          phi = log10( pco2 - co2ice(k) )
+        else
+          phi = log10( pco2 )
+        end if
+        tmpk = log10( temp(k) )
+
+        if ( temp(k) .le. 250 ) then
+          INCLUDE './data/write_Fortran_alb5800K_250.dat'
+        else
+          INCLUDE './data/write_Fortran_alb5800K_350.dat'
+        end if
+        atoa(k) = term1 + term2 + term3 + term4
+
+      else if ( radparam .eq. 5 ) then
+
+        if ( doco2ice ) then
+          phi = log10( pco2 - co2ice(k) )
+        else
+          phi = log10( pco2 )
+        end if
+        tmpk = log10( temp(k) )
+        if ( temp(k) .le. 250 ) then
+          INCLUDE './data/write_Fortran_alb4600K_250.dat'
+        else
+          INCLUDE './data/write_Fortran_alb4600K_350.dat'
+        end if
+        atoa(k) = term1 + term2 + term3 + term4
+
+      else if ( radparam .eq. 6 ) then
+
+        if ( doco2ice ) then
+          phi = log10( pco2 - co2ice(k) )
+        else
+          phi = log10( pco2 )
+        end if
+        tmpk = log10( temp(k) )
+        if ( temp(k) .le. 250 ) then
+          INCLUDE './data/write_Fortran_alb3400K_250.dat'
+        else
+          INCLUDE './data/write_Fortran_alb3400K_350.dat'
+        end if
+        atoa(k) = term1 + term2 + term3 + term4
+
+      end if
+
+      end if
+
 c----------------------------------------------------------------------c
 c  DIURNALLY-AVERAGED INSOLATION 
-c      
-
+      
       if (seasons) then
-        s(k) = (q/pi)*(x(k)*sin(dec)*h + 
+         s(k) = (q/pi)*(x(k)*sin(dec)*h + 
      &        cos(asin(x(k)))*cos(dec)*sin(h))
       else
           ! for mean annual use the second Legendre polynomial
           p2   = (3*sin(lat(k))*sin(lat(k)) - 1) / 2
           s(k) = (q/pi)*(1 - 0.5*p2)
-
-c         ! for mean annual do the Ward isolation integration (JDH)
-c         oblrad = obl*pi/180
-c         call qtrap(0, twopi, s(k), lat(k), oblrad)
-c         s(k) = (q/(2*(pi**2))) * 1/(sqrt(1 - ecc**2)) * s(k)
-c         !print *, 'insolation at', latangle(k), ':', s(k)
       end if
 
 c----------------------------------------------------------------------c
 c  SURFACE TEMPERATURE - SOLVE ENERGY-BALANCE EQUATION 
-c
-      !override heat capacity - set to constant
-c      if( temp(k) .lt. 263.15 ) then
-c        c(k) = 5.25e6 * 2
-c      else
-c       c(k) = 5.25e6 * 40
-c      end if 
 
-      !Force simplified surface albedo
-      if( temp(k) .lt. 263.15 ) then
-        atoa(k) = 0.663
-      else
-        atoa(k) = groundalb
-      end if 
+      if ( constheatcap ) then
+         c(k) = 5.25e6 * 40
+      end if
+
+! Ravi's stuff
+!      atoa(k) = 0.45
 
       if( stochastic ) then
         temp(k) = (diff(k)*t2prime(k)-ir(k)+s(k)*(1-atoa(k)))*dt/c(k) 
@@ -713,6 +1142,64 @@ c      end if
      &            + temp(k)
       end if
 
+      if ( temp(k) .le. 175.0 ) then
+        temp(k) = 175.0
+      end if
+
+
+      imco2(k) = 0.
+      co2flag  = 0
+
+c-nb----------------------------------------------------
+c-nb   CO2 Saturation Temperature 
+c-nb   Set minimum temperature based on saturation temperature of CO2 
+
+      if ( doco2cond ) then
+ 
+      CALL SATCO2( temp(k), co2sat )
+      
+      if ( pco2 .gt. co2sat ) then
+  
+        imco2(k) = 1.
+        co2flag  = 1
+        temp(k) = 3.1823*log10(pco2)**3 + 10.5165*log10(pco2)**2 + 
+     &           28.5760*log10(pco2) + 192.2084 
+
+        newfreeze = pco2 - co2sat - co2ice(k)
+        co2ice(k) = pco2 - co2sat
+        zthick(k) = zthick(k) + newfreeze*1.e5 / ( gacc * rhoco2ice )
+        zmax      = kco2ice * ( 273.16 - temp(k) ) / geoflux
+        if ( zthick(k) .gt. zmax ) then
+          print *, "CO2 ice is too thick!"
+          stop
+        end if
+        if ( newfreeze .lt. 0.0 ) then
+          co2melt(k) = area(k) * newfreeze * gacc * rhoco2ice / 1.e5
+        else
+          co2melt(k) = 0.0
+        end if
+
+      else 
+
+        if ( co2ice(k) .ne. 0.0 ) then         
+          co2melt(k) = area(k) * zthick(k) * gacc * rhoco2ice / 1.e5
+        else
+          co2melt(k) = 0.0
+        end if
+        co2ice(k) = 0.0
+        zthick(k) = 0.0
+
+      end if
+
+      end if
+
+
+!      if ((yrcnt.gt.134.6e6).and.(yrcnt.lt.135e6)) then
+!      write(*,1235)(temp(iii),iii=1,18)
+!      print *,'second time'
+!      pause
+!1235  format(f8.2)
+!      endif
 
 c  SUM FOR GLOBAL AVERAGING
       irsum = irsum + area(k)*ir(k)
@@ -721,38 +1208,41 @@ c  SUM FOR GLOBAL AVERAGING
       tempsum = tempsum + area(k)*temp(k)
       globwthrate = globwthrate + wthrate(k)
       co2cldsum = co2cldsum + area(k)*imco2(k)*s(k)
-c
-      if(.not.last) goto 310
+
+c      if(.not.last) goto 310
 c  ZONAL STATISTICS - if last loop 
       zntempmin(k) = amin1(zntempmin(k),temp(k))
       if (zntempmin(k).eq.temp(k)) zndecmin(k) = decangle
       zntempmax(k) = amax1(zntempmax(k),temp(k))
       if (zntempmax(k).eq.temp(k)) zndecmax(k) = decangle
       zntempsum(k) = zntempsum(k) + temp(k)
-c
+
+      tempmaxsum = tempmaxsum + area(k)*zntempmax(k)
+      tempminsum = tempminsum + area(k)*zntempmin(k)
+
+      znco2icemax(k) = amax1(znco2icemax(k),zthick(k))
+
  310  continue                                     !**end of belt loop
+
 c  **set pole temps equal to adjacent belt temps
       temp(0) = temp(1)
       temp(nbelts+1) = temp(nbelts)
 
-      ! write daily temperature output
-      write(20,601) tcalc/86400,tempsum
- 601  format(f6.0,1x,f6.1)
-      write(21,602) tcalc/86400,temp(1:18)
- 602  format(f6.0,1x,f6.1,1x,f6.1,1x,f6.1,1x,f6.1,1x,f6.1,1x,
-     &   f6.1,1x,f6.1,1x,f6.1,1x,f6.1,1x,f6.1,1x,f6.1,1x,f6.1,1x,
-     &   f6.1,1x,f6.1,1x,f6.1,1x,f6.1,1x,f6.1,1x,f6.1)
+      ! daily output could get large--comment this block if needed for long integrations
+      if( .not. last) then
+        write(20,609) t/dt+366*yrcnt,tempsum,pg0,pco2,co2flag,fh2,d
+ 609    format(2x,f12.2,2x,f8.3,2x,e12.3,2x,e12.6,2x,i12,
+     &    2x,f8.5,2x,f8.5)
+      end if
 
 
-c
 c  WRITE OUTPUT FILES - ONLY ON LAST LOOP      
       if(.not.last ) goto 710
       if(tlast.lt.twrite) goto 710
       tlast = 0.
-c
+
 c  EQUINOXES AND SOLSTICES
-c
-      ! added seasons check here (JDH)
+
       if (seasons) then
          decold = decmid
          decmid = decnew
@@ -760,34 +1250,29 @@ c
 
          if (((abs(decmid).gt.(abs(decold))).and.
      &    (abs(decmid).gt.(abs(decnew)))).or.(decnew*decmid.le.0.)) then 
-c     
+     
 c     write(15,610) file(nfile),decangle
  610        format('data written to file ',a8, ' at declination ',f6.2,
      &           ' degrees')
-c            print *, 'nfile=', nfile
-c            open(unit=nfile+7,file=file(nfile),status='unknown')
-c            do 620 k = 1,nbelts,1
-c               write(nfile+7,615) latangle(k),temp(k),atoa(k),ir(k),
-c     &              d*t2prime(k),s(k)*(1-atoa(k))
  615           format(f6.2,5(3x,f7.3))
  620        continue
             nfile = nfile + 1
          end if         
       end if
-c
+
 c  CO2-CLOUD DATA
       write(17,630) decangle,imco2,co2cldsum/fluxsum
  630  format(3x,f6.2,9x,18(3x,i1),9x,f5.3)
-c     
+     
 c----------------------------------------------------------------------c
 c  GLOBAL AVERAGING
-c     
+     
  710  irave = irsum
       fluxave = fluxsum
       co2cldave = co2cldsum/fluxave
       albave = albsum/fluxave
       tempave = tempsum
-c
+
       iravesum = iravesum + irave
       fluxavesum = fluxavesum + fluxave
       albavesum = albavesum + albave
@@ -795,7 +1280,7 @@ c
       wthratesum = wthratesum + globwthrate
       co2cldavesum = co2cldavesum + co2cldave
       nstep = nstep + 1
-c
+
 c  SEASONAL AVERAGING
       if(t.lt.2*pi/w) goto 800    !**one orbit since last averaging
       ann_tempave = tempavesum/nstep
@@ -804,34 +1289,103 @@ c  SEASONAL AVERAGING
       ann_irave = iravesum/nstep
       ann_wthrateave = wthratesum/nstep
       ann_co2cldave = co2cldavesum/nstep
-c
+
       if(.not.last) then
-        write(18,711) yrcnt,ann_tempave,pco2,d
- 711    format(2x,i7,2x,f8.3,2x,e12.3,2x,f8.5)
+
+        yrwrite = yrcnt / 1.e6
+
+
+        write(18,711) yrwrite,tempmaxsum,pg0,pco2,co2flag,fh2,d
+ 711    format(2x,f12.6,2x,f8.3,2x,e12.3,2x,e12.3,2x,i12,
+     &    2x,f8.5,2x,f8.5)
+c        write(18,711) yrcnt,ann_tempave,pg0,pco2,co2flag,fh2,d
+c 711    format(2x,i12,2x,f8.3,2x,e12.3,2x,e12.3,2x,i12,
+c     &    2x,f8.5,2x,f8.5)
       end if
 
-c     write(*,*) ann_tempave,pco2,d
+      !H2 cycle: calculate ncolh2 and update based on outgassing rate
+      if ( do_h2_cycle ) then
+        h2escape = 1.6e13 * fh2 / ( 1 + fh2 )  !cgs units: 1/(cm^2 s)
+        ph2 = (2./44.*pco2 + 2./28.*pn2) * (fh2 / (1.-fh2))
+        ncolh2 = ph2 / ( 3.3e-30 * 373. )  !cgs units
+        ncolh2 = ncolh2 + (yrstep*3.1557e7)*(h2outgas-h2escape)
+      end if
+
+c     !Carbonate-Silicate pCO2 update
+      if ( do_cs_cycle ) then
+
+        if ( doco2ice ) then
+          pco2 = pco2 + sum( co2melt )
+        end if
+
+        if ( doseaweather ) then
+          seawthrate = seaweather*((pco2/pco20s)**betaexpsea)
+          pco2 = pco2 + (yrstep/1.e9)*(outgassing-sum(wthrate)
+     &      - seawthrate)
+c          seawthrate = seaweather*((pco2/pco20)**betaexpsea)
+c          pco2 = pco2 + (yrstep/1.e9)*(outgassing-sum(wthrate)
+c     &      - seawthrate)
+        else
+          pco2 = pco2 + (yrstep/1.e9)*(outgassing-sum(wthrate))
+        end if
+
+        if( stochastic ) then
+          pco2 = pco2 + sqrt(noisevar)*boxmuller()*1.e-2
+        end if        
+
+        if ( pco2 .lt. 0 ) then
+          !pco2 = 3.e-4
+          pco2 = 1.e-5
+          !pco2 = 1.e-12
+        end if
+
+        ! adjust pg0
+        if ( radparam .eq. 1 ) then
+
+          pg0 = pco2 + pn2
+
+        else if ( radparam .eq. 2 ) then
+
+          !H2 cycle: calculate new value of fh2
+          if ( do_h2_cycle ) then
+            ph2 = ncolh2 * ( 3.3e-30 * 373. )  !cgs units
+            fh2 = ph2 / ( ph2 + 2./44.*pco2 + 2./28.*pn2 )
+            if ( fh2 .lt. 0 ) then
+              fh2 = 0.0
+            else if ( fh2 .gt. 1 ) then
+              fh2 = 1.0
+            end if
+          end if
+
+          pg0 = ( pco2 + pn2 ) / ( 1 - fh2 )
+
+        else if ( radparam .ge. 3 ) then
+
+          pg0 = pco2 + pn2
+
+        end if
+
+        !print *, pg0, pco2, sum(wthrate)
+
+      end if
 
 
-c  ADJUST PCO2 EVERY 5 SEASONAL CYCLES
-      if(nwthr.lt.5) goto 730
-      nwthr = 0
-      wthr = wco2*ann_wthrateave
-      if (wthr.lt.v) goto 725
-c       pco2 = pco2*(1+exp((v-wthr)/v))/2.  ! removed co2 adjusting (JDH)
-      goto 730
- 725  if(wthr.lt.1.e-2) wthr = 1.
-c      pco2 = 2*pco2*(1-0.5*exp((wthr-v)/wthr))
-c
 c  ADJUST DIFFUSION COEFFICIENT
-      avemol = mp*(28.965+44.*pco2)/(1.+pco2) 
-      hcp = (hcp0 + pco2*hcpco2)/(1.+pco2)
-c      write(*,*) pco2,d
-c     d = d0*(1. + pco2)*((avemol0/avemol)**2)*(hcp/hcp0)*  ! removed d adjustment (JDH)
-c     &   (rot0/rot)**2
- 730  nwthr = nwthr + 1
-c
-      if(.not.last) goto 790  
+      avemol = mp*(28.0*pn2+44.*pco2 + 2.0*ph2)/(pg0) 
+      hcp = (hcpn2*pn2 + pco2*hcpco2 + hcph2*ph2)/(pg0)
+
+      if ( diffadj ) then
+      d = d0*(pg0)*((avemol0/avemol)**2)*(hcp/hcp0)*  
+     &   (rot0/rot)**2
+ 
+c-nb  
+      do k = 1, nbelts, 1
+          diff(k) = d
+      end do 
+
+      end if
+          
+c      if(.not.last) goto 790  
 c ZONAL SEASONAL AVERAGES 
       shtempave = 0
       nhtempave = 0
@@ -842,12 +1396,13 @@ c ZONAL SEASONAL AVERAGES
          else
            nhtempave = nhtempave + zntempave(k)
          end if     
+
  732  continue
       shtempave    = shtempave / (nbelts/2)
       nhtempave    = nhtempave / (nbelts/2)
-      print *, "SH/NH temperature difference = ", shtempave - nhtempave
+      !print *, "SH/NH temperature difference = ", shtempave - nhtempave
       zntempave(nbelts+1) = zntempave(nbelts)  !**for ice-line calculation
-c
+
 c  FIND ICE-LINES (ANNUAL-AVERAGE TEMP < 263.15K)
       nedge = 0
       do 740 k=1,nbelts,1
@@ -857,13 +1412,14 @@ c  FIND ICE-LINES (ANNUAL-AVERAGE TEMP < 263.15K)
          nedge = nedge + 1
          iceline(nedge) = icelat
       end if
-c      write(*,*) nedge,iceline
  740  continue
-c
+
+      if(.not.last) goto 790  
       do 750 k=1,nbelts,1
          write(15,751) latangle(k),zntempave(k),zntempmin(k),
      &      zndecmin(k),zntempmax(k),zndecmax(k),
-     &      (zntempmax(k)-zntempmin(k))/2.
+     &      atoa(k)
+c-nb     &      (zntempmax(k)-zntempmin(k))/2.
  751     format(4x,f4.0,9x,f8.3,5x,f8.3,5x,f6.2,5x,f8.3,5x,f6.2,5x,f8.3)
          write(16,752) latangle(k),(zntempmax(k)-zntempmin(k))/2.,
      &     10.8*abs(x(k)),15.5*abs(x(k)),6.2*abs(x(k))
@@ -871,18 +1427,10 @@ c
          write(6,753) zntempave(k)
  753     format(2x,f8.3)
  750  continue
-c      
-c      write(15,755)
+      
  755  format(/ 'SURFACE DATA')
-c      write(15,756)
  756  format(2x,'latitude(deg)',2x,'temp(k)',2x,'belt area',
      &  2x,'weathering area',2x,'zonal weathering rate (g/yr)')
-c      do 758 k = 1,nbelts,1
-c         write(15,757) latangle(k),temp(k),area(k),warea(k),
-c     &     wthrate(k)
-c 757     format(6x,f4.0,8x,f8.3,10x,f5.3,10x,f5.3,15x,e8.2)
-c 758  continue
-c
        write(15,760)
  760  format(/ 'ICE LINES (Tave = 263K)')
       if((nedge.eq.0).and.(zntempave(nbelts/2).le.263.)) then
@@ -907,15 +1455,15 @@ c
         end if
  766    format(f5.3,2x,f8.3,2x,f8.3)
       end if
-c
+
 c  CO2 CLOUDS
       write(15,770)
  770  format(/ 'CO2 CLOUDS')
       write(15,772) ann_co2cldave
  772  format(2x,'planet average co2 cloud coverage = ',f5.3)
-c
+
 c  GEOGRAPHY INFORMATION 
-c
+
  779  format (/ 'GEOGRAPHIC DATA')
       write(15,779)
       write(15,780) ocean
@@ -932,7 +1480,7 @@ c
          write(15,787) cntrlatangle(k),focean(k)
  787     format(11x,f5.1,19x,f5.3)
  788  continue
-c
+
  790  fluxavesum = 0.
       albavesum = 0.
       tempavesum = 0.
@@ -942,29 +1490,43 @@ c
       nstep = 0
       if(last) stop
 
-c
-c check for convergence
-c      if((nwthr.ge.4).and.(abs(wthr-v)/v.lt.cnvg)) goto 1000
-c      if(abs(prevtempave-ann_tempave).lt.cnvg) goto 1000
-c     if( yrcnt .ge. (niter*yrstep) ) goto 1000
+c print out latitude dependent temperatures 
+      open(unit=765,file= 'out/LATdependence.out')
+      !write(765,9997) zntempmave(1:nbelts)
+      write(765,9997) zntempmax(1:nbelts)
+9997  format(20(2x,f8.3))
 
-      if( yricnt .ge. niter ) goto 1000
-      yricnt = yricnt + 1
-      yrcnt      = yrcnt + yrstep
+c print out co2 ice thickness
+      open(unit=766,file= 'out/CO2ice.out')
+      write(766,9998) znco2icemax
+9998  format(20(2x,f8.3))
 
-c      print *, 'smean = ', sum(s)/nbelts
+      znco2icemax(:) = 0
+      zntempmin(:) = 0
+      zntempmax(:) = 0
+      zntempsum(:) = 0
 
+      !check for convergence
+      if ( iterhalt ) then
+
+        if( yricnt .ge. niter ) goto 1000
+        yricnt = yricnt + 1
+        yrcnt  = yrcnt + yrstep
+
+      else
+
+        if(abs(prevtempave-ann_tempave).lt.cnvg) goto 1000
+
+      end if
 
       prevtempave = ann_tempave      
-      !print *, "tempave:", ann_tempave
 
-c
  800  if(seasons) goto 240
       goto 260
-c
+
 c----------------------------------------------------------------------c
 c  WRAP UP
-c
+
  1000 write(*,*) 'The energy-balance calculation is complete.'
       write(15,1010)
  1010 format(/ 'SUMMARY')
@@ -975,9 +1537,10 @@ c
      & ' Watts/m^2'
       write(15,1015) 'planet average outgoing infrared = ',ann_irave, 
      & ' Watts/m^2'
-      write(15,1016) 'seasonal-average weathering rate = ',
-     & ann_wthrateave*wco2,' g/year'
+      write(15,1016) 'total pressure pg0 = ', pg0, ' bars'
       write(15,1016) 'co2 partial pressure = ', pco2, ' bars'
+      write(15,1016) 'n2 partial pressure = ', pn2, ' bars'
+      write(15,1016) 'h2 partial pressure = ', pf2, ' bars' 
  1015 format(3x,a,f7.3,a)
       write(15,1016) 'thermal diffusion coefficient (D) = ', d, 
      & ' Watts/m^2 K'
@@ -985,10 +1548,10 @@ c
       write(15,1020) 'convergence to final temperature profile in ',
      & tcalc, ' seconds'
  1020 format(3x,a,e9.3,a)
-c
+
 c  LOOP ONE MORE TIME, AND WRITE OUTPUT TO FILES
       last = .TRUE.
-c
+
 c  initialize zntempmin matrix
 
       do 1125 k = 1,nbelts,1
@@ -1000,33 +1563,33 @@ c
       write(15,1135)
  1135 format(1x,'latitude(deg)',2x,'ave temp(K)',2x,'min temp(K)',
      &  2x,'@dec(deg)',2x,'max temp(K)',2x,'@dec(deg)',2x,
-     &  'seas.amp(K)')
-c
-c      write(15,1100) 
+     &  'planet albe')
+
  1100 format(/ 'OUTPUT FILES')
-      !tcalc = 0.
+      tcalc = 0.
       if(seasons) goto 240
       goto 260
-c
+
       end
-c
+
 c----------------------------------------------------------------------c
       subroutine  geog(igeog)
-c
+
 c  This subroutine calculates continental/oceanic zone fractions for five
 c  geography types (1) present geography (2) polar supercontinent (3) equa-
-c  torial supercontinent (4) 100% oceanic and (5) 100% land (10-27-95)
-c
+c  torial supercontinent (4) 100% oceanic (5) 100% land and 
+c  (6) equal land/ocean fraction at all latitude bands
+
       parameter (pi=3.141592653589793,nbelts=18)
-c
+
       common/geogblk/cntrlat(nbelts),cntrlatangle(nbelts),coastlat,
      &   focean(nbelts),lat(0:nbelts+1),latangle(0:nbelts+1),ocean
-c
+
       real*4  lat,latangle
       logical coast
-c
-      goto (10,20,30,40,50) igeog
-c      
+
+      goto (10,20,30,40,50,60) igeog
+      
 c  PRESENT GEOGRAPHY from Sellers (1965)
  10   rewind(2)
       n = 1
@@ -1042,20 +1605,20 @@ c **make sure there is as many ocean data as nbelts
       end if
  18   format('Need more ocean data to run model for ',i2,' lat belts!' /
      & 'Energy-balance calculation aborted.')
-c
+
       return
-c
-c
+
+
 c  SOUTH POLAR SUPERCONTINENT 
  20   coast = .TRUE.    !** still on land
       coastlat = asin(1-2*ocean)*180/pi
       do 25 k = 1,nbelts,1
          if (latangle(k).le.coastlat) then
             focean(k) = 0.
-c
+
 c **see whether you are on the coast
             if (latangle(k) .eq. coastlat) coast = .FALSE.
-c  
+  
          else if ((latangle(k).gt.coastlat).and.(coast)) then
             focean(k) = (sin(lat(k)) - sin(coastlat*pi/180.))/
      &         (sin(lat(k)) - sin(lat(k)-pi/nbelts))          
@@ -1064,9 +1627,9 @@ c
             focean(k) = 1.
          end if
  25   continue
-c
+
       return
-c
+
 c  EQUATORIAL SUPERCONTINENT
  30   coast = .TRUE.     !**still on land
       coastlat = asin(1-ocean)*180/pi
@@ -1074,10 +1637,10 @@ c  EQUATORIAL SUPERCONTINENT
          if (latangle(k) .le. coastlat) then
             focean(k) = 0.
             focean(nbelts-k+1) = 0.
-c
+
 c **see whether you are on the coast
             if (latangle(k) .eq. coastlat) coast = .FALSE. 
-c             
+             
          else if ((latangle(k) .gt. coastlat) .and. (coast)) then
             focean(k) = (sin(lat(k)) - sin(coastlat*pi/180.))/
      &         (sin(lat(k)) - sin(lat(k)-pi/nbelts))          
@@ -1088,23 +1651,29 @@ c
             focean(nbelts-k+1) = 1.
          end if
  35   continue
-c
+
       return
-c
+
 c  100% WATER COVERED***
  40   do 45 k = 1,nbelts,1
          focean(k) = 1.
  45   continue
       return
-c
+
 c  100% LAND SURFACE***
  50   do 55 k = 1,nbelts,1
          focean(k) = 0.
  55   continue
       return
-c
+
+c  EQUAL LAND/OCEAN FRACTION AT ALL LATITUDE BANDS
+ 60   do 65 k = 1,nbelts,1
+         focean(k) = ocean
+ 65   continue
+      return
+
       end
-c
+
 c---------------------------------------------------------------------c
       subroutine  keplereqn(m,e,x)
 c---------------------------------------------------------------------c
@@ -1113,15 +1682,15 @@ c  namely M = E - eSin(E), where M is the mean anomaly, E is the
 c  eccentric anomaly, and e is the eccentricity of the orbit.
 c  Input is M and e, and output is E. The chosen convergence is quartic 
 c  as outlined in Danby (1988), pp. 149-54.  coded from Danby (5-11-95)
-c
+
       implicit  integer(n), real*8(a-m,o-z)
       parameter (pi=3.141592653589793)
-c
+
 c  initial guess is x = M + k*e with k = 0.85
       k = 0.85
 c  bound on the permissible error for the answer
       del = 1.e-13
-c
+
       ms = m - int(m/(2*pi))*(2*pi)
       sigma = sign(1.,sin(ms))
       x = ms + sigma*k*e
@@ -1147,83 +1716,26 @@ c  stop calculation if number of iterations is too large
  200  return
       end
 
-
-c---------------------------------------------------------------
-c     Integrand from Ward, 1974
-c---------------------------------------------------------------
-      FUNCTION insolation(x,d,t)
-      REAL :: insolation
-      REAL, INTENT(IN) :: x,d,t
-      insolation = SQRT(1 - (sin(d)*cos(t) - cos(d)*sin(t)*sin(x))**2)
-      END FUNCTION
-
-
-c------------------------------------------------------------------
-c     Subroutines for numerical integration from Numerical Recipes
-c------------------------------------------------------------------
-      
-      SUBROUTINE trapzd(a,b,s,n,lat,ob) 
-      INTEGER n 
-      REAL a,b,s,insolation,lat,ob
-      EXTERNAL insolation
-      INTEGER it,j 
-      REAL del,sum,tnm,x 
-      if (n.eq.1) then 
-         s=0.5*(b-a)*(insolation(a,lat,ob)+insolation(b,lat,ob)) 
-      else 
-         it=2**(n-2) 
-         tnm=it 
-         del=(b-a)/tnm 
-         x=a+0.5*del 
-         sum=0. 
-         do 1701 j=1,it 
-            sum=sum+insolation(x,lat,ob) 
-            x=x+del 
- 1701    continue
-         s=0.5*(s+(b-a)*sum/tnm)         
-      endif 
-      return 
-      END
-
-
-      SUBROUTINE qtrap(a,b,s,lat,ob) 
-      INTEGER JMAX 
-      REAL a,b,s,EPS,lat,ob 
-      PARAMETER (EPS=1.e-6, JMAX=20) 
-      INTEGER j 
-      REAL olds olds=-1.e30 
-      do 1711 j=1,JMAX 
-         call trapzd(a,b,s,j,lat,ob) 
-         if (j.gt.5) then 
-            if (abs(s-olds).lt.EPS*abs(olds).or. 
-     &           (s.eq.0..and.olds.eq.0.)) return 
-         endif 
-         olds=s 
- 1711 continue
-      pause 'too many steps in qtrap'
-      END
-
-
 c------------------------------------------------------------------
 c Subroutines for random number generation
 c------------------------------------------------------------------
 
       SUBROUTINE SRAND(ISEED)
-C
+
 C  This subroutine sets the integer seed to be used with the
 C  companion RAND function to the value of ISEED.  A flag is 
 C  set to indicate that the sequence of pseudo-random numbers 
 C  for the specified seed should start from the beginning.
-C
+
       COMMON /SEED/JSEED,IFRST
-C
+
       JSEED = ISEED
       IFRST = 0
-C
+
       RETURN
       END
       REAL FUNCTION RAND()
-C
+
 C  This function returns a pseudo-random number for each invocation.
 C  It is a FORTRAN 77 adaptation of the "Integer Version 2" minimal 
 C  standard number generator whose Pascal code appears in the article:
@@ -1231,19 +1743,19 @@ C
 C     Park, Steven K. and Miller, Keith W., "Random Number Generators: 
 C     Good Ones are Hard to Find", Communications of the ACM, 
 C     October, 1988.
-C
+
       PARAMETER (MPLIER=16807,MODLUS=2147483647,MOBYMP=127773,
      +           MOMDMP=2836)
-C
+
       COMMON  /SEED/JSEED,IFRST
       INTEGER HVLUE, LVLUE, TESTV, NEXTN
       SAVE    NEXTN
-C
+
       IF (IFRST .EQ. 0) THEN
         NEXTN = JSEED
         IFRST = 1
       ENDIF
-C
+
       HVLUE = NEXTN / MOBYMP
       LVLUE = MOD(NEXTN, MOBYMP)
       TESTV = MPLIER*LVLUE - MOMDMP*HVLUE
@@ -1253,14 +1765,14 @@ C
         NEXTN = TESTV + MODLUS
       ENDIF
       RAND = REAL(NEXTN)/REAL(MODLUS)
-C
+
       RETURN
       END
       BLOCKDATA RANDBD
       COMMON /SEED/JSEED,IFRST
-C
+
       DATA JSEED,IFRST/123456789,0/
-C
+
       END
 
 c------------------------------------------------------------------
@@ -1283,3 +1795,28 @@ c------------------------------------------------------------------
         boxmuller = y1
         return
       end
+
+c------------------------------------------------------------------
+c Subroutines to check for CO2 condensation
+c------------------------------------------------------------------
+
+      SUBROUTINE SATCO2(T,PSCO2)
+c This subroutine calculates the vapor saturation pressure for CO2
+
+      IF (T.LT.216.56) GO TO 1
+
+C   VAPOR PRESSURE OVER LIQUID
+      PSL = 3.128082 - 867.2124/T + 1.865612E-2*T
+     2  - 7.248820E-5*T*T + 9.3E-8*T*T*T
+      PATM = 10.**PSL
+      PSCO2 = 1.013*PATM
+
+      RETURN
+
+C   VAPOR PRESSURE OVER SOLID
+C   (Altered to match vapor pressure over liquid at triple point)
+   1  PSL = 6.760956 - 1284.07/(T - 4.718) + 1.256E-4*(T - 143.15)
+      PATM = 10.**PSL
+      PSCO2 = 1.013*PATM 
+      RETURN
+      END
