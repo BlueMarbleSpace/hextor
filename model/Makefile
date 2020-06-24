@@ -1,5 +1,5 @@
 #
-# Makefile for Darren Williams' EBM
+# Makefile for Stochastic EBM
 #
 FC 	= /opt/intel/bin/ifort
 FLAGS	= -r8 -align all -i-static -warn nogeneral

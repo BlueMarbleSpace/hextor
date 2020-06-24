@@ -3,7 +3,7 @@
 #---------------------------------------------------------------------------------------------------
 #set echo
 
-set wdir 	= /models/stochastic_ebm
+set wdir 	= /models/hextor
 set modeldir 	= $wdir/model
 set plotdir 	= $wdir/plots
 set outdir	= $modeldir/out
