@@ -2,39 +2,41 @@
 OBLIQUITY: 23.50 degrees
 
 SUMMARY
-   planet average temperature = 288.612 Kelvin
-   planet average albedo =   0.308
+   planet average temperature = 287.645 Kelvin
+   planet average albedo =   0.309
    planet average insolation = 339.775 Watts/m^2
-   planet average outgoing infrared = 235.616 Watts/m^2
-   seasonal-average weathering rate = .337E+15 g/year
-   co2 partial pressure = .280E-03 bars
-   thermal diffusion coefficient (D) = .380E+00 Watts/m^2 K
-   convergence to final temperature profile in 0.158E+10 seconds
+   planet average outgoing infrared = 235.636 Watts/m^2
+   total pressure pg0 = .100E+01 bars
+   co2 partial pressure = .331E-03 bars
+   n2 partial pressure = .100E+01 bars
+   h2 partial pressure = .000E+00 bars
+   thermal diffusion coefficient (D) = .639E+00 Watts/m^2 K
+   convergence to final temperature profile in 0.316E+09 seconds
 
 ZONAL STATISTICS
- latitude(deg)  ave temp(K)  min temp(K)  @dec(deg)  max temp(K)  @dec(deg)  seas.amp(K)
-    -85.          260.697      245.162       2.59      278.654     -19.63       16.746
-    -75.          262.500      248.467       2.59      276.754     -16.54       14.143
-    -65.          267.651      257.318       2.20      274.728      -3.61        8.705
-    -55.          275.069      270.813      -5.22      279.126       0.39        4.156
-    -45.          282.658      279.449       0.24      285.894      -0.48        3.223
-    -35.          289.666      286.758       2.98      292.546      -0.87        2.894
-    -25.          295.463      293.030       5.31      297.836      -0.48        2.403
-    -15.          299.581      298.004       6.83      301.104       2.35        1.550
-     -5.          301.710      301.064      11.56      302.316       8.47        0.626
-      5.          301.693      301.096     -10.72      302.297     -10.07        0.601
-     15.          299.527      297.864      -5.54      301.192      -4.06        1.664
-     25.          295.361      292.361      -4.00      298.365      -0.94        3.002
-     35.          289.493      284.980      -2.44      294.081       0.63        4.550
-     45.          282.374      275.871      -0.87      289.034       2.59        6.582
-     55.          274.600      264.956      -0.09      283.757       5.31        9.401
-     65.          266.860      251.494      -6.69      278.773       9.43       13.640
-     75.          261.735      242.682      -7.06      273.078       6.07       15.198
-     85.          259.928      239.560      -5.93      270.685       6.07       15.563
+ latitude(deg)  ave temp(K)  min temp(K)  @dec(deg)  max temp(K)  @dec(deg)  planet albe
+    -85.          258.858      246.776       7.96      270.781     -20.07        0.773
+    -75.          260.699      249.219       7.96      271.362     -18.43        0.669
+    -65.          265.892      256.293       6.45      273.557     -10.01        0.463
+    -55.          273.183      266.795      -0.55      278.423      -2.05        0.422
+    -45.          281.296      277.053      -2.90      285.392       0.31        0.348
+    -35.          289.368      285.879       1.42      292.893      -0.09        0.294
+    -25.          296.388      293.429       5.31      299.311       0.31        0.258
+    -15.          301.514      299.477       7.21      303.471       3.14        0.233
+     -5.          304.039      303.130      11.91      304.878       8.84        0.222
+      5.          303.599      302.868     -11.08      304.398     -11.48        0.225
+     15.          300.170      298.130      -4.39      302.328      -5.99        0.244
+     25.          294.129      290.418      -0.48      297.979      -2.90        0.282
+     35.          286.206      280.068       0.31      292.105      -0.55        0.332
+     45.          277.263      267.337      -2.05      285.694       2.59        0.478
+     55.          268.495      254.720      -7.44      279.561       5.69        0.633
+     65.          261.331      244.728      -9.29      274.489       9.43        0.674
+     75.          256.876      238.370      -8.92      270.948      10.51        0.721
+     85.          255.371      236.202      -8.56      269.855      12.25        0.780
 
 ICE LINES (Tave = 263K)
-  ice-line latitude = -73.7 degrees.
-  ice-line latitude =  72.2 degrees.
+  ice-line latitude = -70.3 degrees.
+  ice-line latitude =  62.5 degrees.
 
 CO2 CLOUDS
   planet average co2 cloud coverage = 0.000
