@@ -1,0 +1,18 @@
+ 0.0001		! -90 to -80 degrees
+ 0.246          ! -80 to -70 degrees
+ 0.896          ! -70 to -60 degrees      
+ 0.992		! -60 to -50 degrees
+ 0.970          ! -50 to -40 degrees
+ 0.888          ! -40 to -30 degrees
+ 0.769          ! -30 to -20 degrees
+ 0.780		! -20 to -10 degrees      data taken from Sellers (1965)
+ 0.764          ! -10 to 0 degrees        to be read for 18 latitude belts
+ 0.772          ! 0 to 10 degrees
+ 0.736		! 10 to 20 degrees
+ 0.624		! 20 to 30 degrees
+ 0.572		! 30 to 40 degrees
+ 0.475	        ! 40 to 50 degrees
+ 0.428		! 50 to 60 degrees
+ 0.294          ! 60 to 70 degrees
+ 0.713          ! 70 to 80 degrees
+ 0.934          ! 80 to 90 degrees

@@ -1,0 +1,64 @@
+
+OBLIQUITY: 25.00 degrees
+
+SUMMARY
+   planet average temperature = 360.629 Kelvin
+   planet average albedo =   0.242
+   planet average insolation = 339.777 Watts/m^2
+   planet average outgoing infrared = 257.530 Watts/m^2
+   seasonal-average weathering rate = ******** g/year
+   co2 partial pressure = .100E+01 bars
+   thermal diffusion coefficient (D) = .686E+00 Watts/m^2 K
+   convergence to final temperature profile in 0.664E+09 seconds
+
+ZONAL STATISTICS
+ latitude(deg)  ave temp(K)  min temp(K)  @dec(deg)  max temp(K)  @dec(deg)  seas.amp(K)
+    -85.          340.196      331.239       4.40      351.683     -21.32       10.222
+    -75.          341.409      333.837       3.16      350.658     -18.46        8.411
+    -65.          344.871      340.064      -3.48      349.972      -5.88        4.954
+    -55.          349.994      346.610      -3.07      353.468      -0.51        3.429
+    -45.          355.786      352.897       0.25      358.708      -0.93        2.905
+    -35.          361.382      358.763       3.16      364.009      -0.93        2.623
+    -25.          366.117      363.912       6.03      368.297      -0.09        2.193
+    -15.          369.529      368.060       8.04      370.959       0.32        1.449
+     -5.          371.276      370.640      12.99      371.832       9.76        0.596
+      5.          371.193      370.655     -12.12      371.785     -11.44        0.565
+     15.          369.266      367.742      -5.88      370.833      -5.13        1.546
+     25.          365.658      362.911      -4.24      368.441      -1.41        2.765
+     35.          360.738      356.626       0.42      364.902       1.09        4.138
+     45.          355.014      349.458      -3.00      360.700       3.99        5.621
+     55.          349.187      342.513      -3.00      356.148       7.24        6.818
+     65.          344.094      337.121      -2.59      351.491      10.38        7.185
+     75.          340.679      334.614       6.19      346.550       5.63        5.968
+     85.          339.479      333.841       9.76      344.366       4.40        5.263
+
+ICE LINES (Tave = 263K)
+   planet is ice-free.
+
+CO2 CLOUDS
+  planet average co2 cloud coverage = 0.000
+
+GEOGRAPHIC DATA
+planet ocean fraction: 1.0
+coast latitude:   0.0
+geography: 1
+number of belts: 18
+  latitude of belt center  belt ocean fraction
+           -85.0                   0.000
+           -75.0                   0.349
+           -65.0                   1.271
+           -55.0                   1.407
+           -45.0                   1.376
+           -35.0                   1.260
+           -25.0                   1.091
+           -15.0                   1.106
+            -5.0                   1.084
+             5.0                   1.095
+            15.0                   1.044
+            25.0                   0.885
+            35.0                   0.811
+            45.0                   0.674
+            55.0                   0.607
+            65.0                   0.417
+            75.0                   1.011
+            85.0                   1.325
