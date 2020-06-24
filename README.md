@@ -10,7 +10,12 @@ README file for release 1.2.1
 
 4) Adjust any model parameters by editing the file ./input.nml. 
 
-5) Run the script by executing ./runEBM.sh
+5) Adjust the length of the model integration by setting the value of the "niter" parameter in ./model/driver.f.
 
-6) Model output is located in ./model/out/, and optional plots are *.eps files in ./plots/
+6) Run the script by executing ./runEBM.sh
+
+7) Model output is located in ./model/out/, and optional plots are *.eps files in ./plots/
+
+-- The file "tempseries.out" lists columns as: time, temperature, pco2, diffusion
+
 
