@@ -1,5 +1,6 @@
-# README file for HEXTOR (Habitable EBM for eXoplaneT ObseRvations)
-# Release 1.2.1
+# HEXTOR (Habitable EBM for eXoplaneT ObseRvations)
+
+README file for release 1.2.1
 
 1) Edit ./model/Makefile and set the values of the Fortran compiler FC and location of this model WDIR
 
