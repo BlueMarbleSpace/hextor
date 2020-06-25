@@ -3,16 +3,20 @@
 #
 
 ### Edit FC and WDIR to match your system ###
-FC 	= /opt/intel/bin/ifort
+FC 	= /usr/bin/h5pfc
+#FC 	= /opt/intel/bin/ifort
 WDIR	= /models/hextor/model
 #############################################
 
-FLAGS	= -r8 -align all -i-static -warn nogeneral
+FLAGS	= -O3 -xHost -ipo -r8 -align all -i-static -warn nogeneral
 TARGET	= driver
-OBJECTS = driver.o
+OBJECTS = radiation.o driver.o
 
 $(TARGET) : $(OBJECTS)
 	$(FC) $(FLAGS) -o $(TARGET) $(OBJECTS)
+
+radiation.o : $(WDIR)/radiation/radiation.f90
+	$(FC) $(FLAGS) -c $(WDIR)/radiation/radiation.f90
 
 driver.o : $(WDIR)/driver.f
 	$(FC) $(FLAGS) -c $(WDIR)/driver.f
