@@ -1,5 +1,5 @@
 #!/bin/csh
-# Runscript for Stochastic EBM (14 Feb 2014 JDH)
+# Runscript for EBM (14 Feb 2014 JDH)
 #---------------------------------------------------------------------------------------------------
 #set echo
 
@@ -20,10 +20,6 @@ set sep         = "----------------------------------------"
 
 cp $wdir/$namelist $modeldir
 cd $modeldir
-
-# This was needed to fix an old error with ifort, no longer necessary
-# echo null > \(
-# echo null > AS_NEEDED
 
 make -f Makefile
 
