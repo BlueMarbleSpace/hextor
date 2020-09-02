@@ -67,12 +67,12 @@ c----------------------------------------------------------------------c
 
       parameter (nbelts=18)
       parameter (pi=3.14159265,grav=6.6732e-8,msun=1.9891e33)
-      parameter (mp=1.67e-24,q0=1360.,cnvg=1.e-1)
+      parameter (mp=1.67e-24,cnvg=1.e-1)
       parameter (sbc=5.67e-8,emis=0.64)
       parameter (twopi=2*pi)
 c      parameter (niter=1)
 c      parameter (niter=300000)
-      parameter (niter=2001)
+      parameter (niter=10)
       parameter (niterhalf=1001)
       parameter (niterquarter=1501)
    
@@ -90,16 +90,16 @@ c      parameter (niter=300000)
      &  stab(0:nbelts)
 
       character  header*80,file(0:3)*8
-      logical seasons, last, snowball, linrad, linalb, cloudalb
-      logical stochastic, soladj, constheatcap, diffadj, iterhalt
+      logical seasons, last, linrad, linalb, cloudalb
+      logical do_stochastic, soladj, constheatcap, diffadj, iterhalt
       logical do_cs_cycle, do_h2_cycle
-      real landsnowfrac, RAND, boxmuller, noisevar
-      real outgassing, weathering, betaexp, kact, krun, fn2
+      real landsnowfrac, RAND, boxmuller, noisevar, heatcap
+      real outgassing, weathering, betaexp, kact, krun, q0
       real pg0, ir2, fh2, co2sat, h2escape, ph2, ncolh2, h2outgas
       integer yrcnt, yrstep, radparam, co2flag
       integer ISEED, resfile
       integer*4 now(3)
-      real total
+      real total, snowalb, tempinit, solarcon
       dimension solcon(niter),prec(niter),ecce(niter),
      &  yrlabel(niter),obliq(niter)
        
@@ -115,10 +115,10 @@ c  INITIALIZE VARIABLES
       ann_tempave = 10.         !just some constant greater than zero
       seasons = .true.     !if .true. do seasons: otherwise do mean-annual
       last = .false.       !should always be .false.
-      snowball = .false.   !if .true. then start as an ice-ball
-      stochastic = .false. !if .true. then include stochastic perturbation
+      do_stochastic = .false. !if .true. then include stochastic perturbation
       soladj = .false.     !if .true. then include solar forcing adjustment
       resfile = 0          !start from previous (1), present Earth (2) hothouse (3), large ice (4)
+      q0 = 1360.           !solar constant
       tend = 7.e11          !calculation length (sec)
       dt = 8.64e4            !time step (sec)
       rot0 = 7.27e-5       !Earth's present rotation rate (rad/sec)
@@ -174,20 +174,35 @@ c  INITIALIZE VARIABLES
       yrstep = 1
       yrcnt = 0
       yricnt = 1
+      heatcap = cl
+      snowalb = 0.663 ! changed this from 0.7 as per Caldiera & Kasting (JDH), added to namelist
+      tempinit = 273.16
 
       CALL itime( now )
       CALL SRAND( now(3) )
 
 
-      NAMELIST /ebm/ seasons, snowball, tend, dt, rot, a, ecc, peri, 
-     &               obl, cloudir, ocean, igeog, groundalb, 
-     &               relsolcon, landsnowfrac, fcloud, yrstep,
-     &               resfile, noisevar, stochastic, soladj, d0,
-     &               linrad, linalb, constheatcap, diffadj,
-     &               cloudalb, iterhalt, do_cs_cycle, outgassing, 
-     &               weathering, betaexp, kact, krun, fco2, fh2,
-     &               radparam, do_h2_cycle, h2outgas, pg0
+      NAMELIST /ebm/ seasons, tend, dt, rot, a, ecc, peri, 
+     &               obl, ocean, igeog, yrstep, resfile, d0,
+     &               linalb, constheatcap, heatcap, diffadj,
+     &               iterhalt, fco2, fh2, pg0, tempinit
+
+      NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
+     &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
+     &               linrad, solarcon
+
+      NAMELIST /co2cycle/ do_cs_cycle, outgassing, weathering,
+     &               betaexp, kact, krun
+
+      NAMELIST /h2cycle/ do_h2_cycle, h2outgas
+
+      NAMELIST /stochastic/ do_stochastic, noisevar
+
       READ( namelistid, NML=ebm )
+      READ( namelistid, NML=radiation )
+      READ( namelistid, NML=co2cycle )
+      READ( namelistid, NML=h2cycle )
+      READ( namelistid, NML=stochastic )
       CLOSE( namelistid )
 
  
@@ -203,6 +218,7 @@ c  OPEN FILES
       open (unit=17,file='out/co2clouds.out',status='unknown')
       open (unit=18,file='out/tempseries.out',status='unknown')
       open (unit=19,file='out/icelines.out',status='unknown')
+      open (unit=20,file='out/dailytempseries.out',status='unknown')
       open (unit=99,file='data/insolaout.dat',status='old')
 
 c  WRITE OBLIQUITY TO OUTPUT
@@ -227,42 +243,39 @@ c SET UP INITIAL TEMPERATURE PROFILE
         pn2 = pg0 - pco2
         ph2 = 0.0
         fh2 = 0.0
-        fn2 = pn2/pg0
       else if ( radparam .eq. 2 ) then
         pco2 = pg0*fco2
         ph2 = pg0*(1-fco2)
         pn2 = 0.0
-        fn2 = 0.0 
         fh2 = 1-fco2
       else if ( radparam .eq. 3 ) then
-        pco2 = pg0*fco2
-        ph2 = pg0*(1.-fco2)
-        pn2 = 0.0
-        fn2 = 0.0
-        fh2 = 1.-fco2
+
+        if ( do_h2_cycle ) then
+          pco2 = pg0*fco2
+          ph2 = pg0*(1.-fco2)
+          pn2 = 0.0
+          fh2 = 1.-fco2
+        else 
+          pn2 = pg0
+          pco2 = pg0*fco2
+          pg0 = pn2 + pco2
+          !pco2 = pg0*fco2
+          !ph2 = pg0*fh2
+          !pn2 = pg0
+        end if
         call radiation_init
+
       else if (radparam .eq. 4 ) then
         pco2 = pg0*fco2
         ph2 = pg0*(1.-fco2)
         pn2 = 0.0
-        fn2 = 0.0
       end if
 
-c
-      if( snowball .and. ( resfile .ne. 0 ) ) then
-        print *, 'Namelist parameters SNOWBALL and RESFILE cannot
-     & both be used.' 
-        print *, 'EBM Calculation aborted.'
-        stop
-      end if
-  
-      if( snowball ) then
-        do k = 0, nbelts+1, 1
-          temp(k) = 233.
-        end do
-      else if( resfile .eq. 0 ) then
+      q0 = solarcon
+
+      if( resfile .eq. 0 ) then
         do k = 1, nbelts, 1
-          temp(k) = 273.15
+          temp(k) = tempinit
         end do   
       else if( resfile .eq. 1 ) then	!restart from last run
         rewind(6)
@@ -586,7 +599,7 @@ c    of 4.59 Wm^-2.)
       else if ( radparam .eq. 3 ) then
 
         olrval = 0.0
-        call getOLR( pg0, fh2, fch4, temp(k), olrval ) 
+        call getOLR( pg0, fh2, fco2, temp(k), olrval ) 
         ir(k) = olrval / 1000.
 
         if ( ir(k) .le. -1. ) then
@@ -648,8 +661,7 @@ c      ir(k) = log10(term1 + term2 + term3 + term4) / 1000.
       end if
 
         ir(k) = ir(k) - cloudir   !**reduction of outgoing-infrared by clouds
-c      print *, 'Hello World'
-c      STOP
+
       end if
 c      print *, X1,X2,X3,temp,ir
 c      STOP
@@ -709,8 +721,9 @@ c CO2 ICE ALBEDO IF CO2 IS CONDENSING AT SURFACE
       end if
 
 c LAND WITH STABLE SNOW COVER; SEA-ICE WITH SNOW COVER
- 420  snowalb = 0.45 ! changed this from 0.7 as per Caldiera & Kasting (JDH) 
-      landalb = snowalb*landsnowfrac + groundalb*(1 - landsnowfrac)
+ !420  snowalb = 0.663 ! changed this from 0.7 as per Caldiera & Kasting (JDH) 
+ !420  snowalb = 0.45 ! changed this from 0.7 as per Caldiera & Kasting (JDH) 
+ 420  landalb = snowalb*landsnowfrac + groundalb*(1 - landsnowfrac)
       icealb = snowalb
 
       ci = 1.05e7
@@ -1019,7 +1032,7 @@ c      as = .216
 
         zendeg = mu(k)*180/pi
 
-        call getPALB( pg0, fh2, fch4, temp(k), zendeg,        
+        call getPALB( pg0, fh2, fco2, temp(k), zendeg,        
      &                surfalb(k), atoa(k) )
 
         if ( atoa(k) .le. -1 ) then
@@ -1190,13 +1203,14 @@ c----------------------------------------------------------------------c
 c  SURFACE TEMPERATURE - SOLVE ENERGY-BALANCE EQUATION 
 
       if ( constheatcap ) then
-         c(k) = 5.25e6 * 40
+         c(k) = heatcap
+         !c(k) = 5.25e6 * 40
       end if
 
 ! Ravi's stuff
 !      atoa(k) = 0.45
 
-      if( stochastic ) then
+      if( do_stochastic ) then
         temp(k) = (diff(k)*t2prime(k)-ir(k)+s(k)*(1-atoa(k)))*dt/c(k) 
      &            + sqrt(noisevar)*boxmuller()
      &            + temp(k)
@@ -1261,6 +1275,13 @@ c  ZONAL STATISTICS - if last loop
 c  **set pole temps equal to adjacent belt temps
       temp(0) = temp(1)
       temp(nbelts+1) = temp(nbelts)
+
+      ! daily output could get large--comment this block if needed for long integrations
+      if( .not. last) then
+        write(20,609) t/dt+366*yrcnt,tempsum,pg0,pco2,co2flag,fh2,d
+ 609    format(2x,f12.2,2x,f8.3,2x,e12.3,2x,e12.6,2x,i12,
+     &    2x,f8.5,2x,f8.5)
+      end if
 
 
 c  WRITE OUTPUT FILES - ONLY ON LAST LOOP      
@@ -1520,7 +1541,7 @@ c9997  format(20(2x,f8.3))
         yricnt = yricnt + 1
         yrcnt  = yrcnt + yrstep
 
-        !print *, "year = ", yrcnt
+        print *, "year = ", yrcnt
 
       else
 

@@ -10,13 +10,13 @@ implicit none
 public :: radiation_init, radiation_end, getOLR, getPALB
 !==================================================================================
 
-  integer, parameter :: nolr = 5
-  integer, parameter :: nalb = 7
-  integer, parameter :: dolr = 11248
-  integer, parameter :: dalb = 98556
+  integer, parameter :: nolr = 4
+  integer, parameter :: nalb = 6
+  integer, parameter :: dolr = 1748
+  integer, parameter :: dalb = 34960
 
   character*100 :: file_name = "./radiation/radiation_N2_CO2.h5"
-  !character*100 :: file_name = "radiation_N2_CO2.h5"   !uncomment for standalone test with main.f90
+  !character*100 :: file_name = "./radiation_N2_CO2.h5"   !uncomment for standalone test with main.f90
   character*100 :: sds_olr   = "/olr"
   character*100 :: sds_alb   = "/palb"
   integer(HID_T):: file_id, olr_id, alb_id
@@ -49,11 +49,11 @@ end subroutine radiation_init
 
 !==================================================================================
 
-subroutine getOLR( pg0, fh2, fch4, tg0, olr )
+subroutine getOLR( pg0, fh2, fco2, tg0, olr )
 
   real, intent(in)  :: pg0
   real, intent(in)  :: fh2
-  real, intent(in)  :: fch4
+  real, intent(in)  :: fco2
   real, intent(in)  :: tg0
   real, intent(out) :: olr
 
@@ -65,9 +65,10 @@ subroutine getOLR( pg0, fh2, fch4, tg0, olr )
   integer :: i, j
 
   difference(1,:) = ( database_olr(1,:) - pg0  )**2
-  difference(2,:) = ( database_olr(2,:) - fh2  )**2
-  difference(3,:) = ( database_olr(3,:) - fch4 )**2
-  difference(4,:) = ( database_olr(4,:) - tg0  )**2
+  difference(2,:) = ( database_olr(2,:) - fco2  )**2
+  !difference(3,:) = ( database_olr(3,:) - fh2 )**2
+  !difference(4,:) = ( database_olr(4,:) - tg0  )**2
+  difference(3,:) = ( database_olr(3,:) - tg0  )**2
   distance        = sum( difference, dim=1 )
   distance        = sqrt( distance )
 
@@ -81,8 +82,10 @@ subroutine getOLR( pg0, fh2, fch4, tg0, olr )
       neighbor2 = i
     end if
   end do
+  !print *, neighbor1, neighbor2
 
-  if ( database_olr(5,neighbor1) .le. -1 ) then
+  !if ( database_olr(5,neighbor1) .le. -1 ) then
+  if ( database_olr(4,neighbor1) .eq. -1 ) then
     olr = -1
     return
   end if
@@ -91,18 +94,21 @@ subroutine getOLR( pg0, fh2, fch4, tg0, olr )
   diff(1) = ( database_olr(1,neighbor1) - database_olr(1,neighbor2) )**2
   diff(2) = ( database_olr(2,neighbor1) - database_olr(2,neighbor2) )**2
   diff(3) = ( database_olr(3,neighbor1) - database_olr(3,neighbor2) )**2
-  diff(4) = ( database_olr(4,neighbor1) - database_olr(4,neighbor2) )**2
+  !diff(4) = ( database_olr(4,neighbor1) - database_olr(4,neighbor2) )**2
   dist      = sqrt( sum( diff ) )
   sigma     = ( distance( neighbor1 ) + distance( neighbor2 ) ) / 2  
   sigma     = 100000.0
   rbf       = exp( -dist / ( sigma**2 ) )
 
-  weight1 = ( database_olr(5,neighbor2)*rbf - database_olr(5,neighbor1) ) / ( rbf*rbf - 1 )
-  weight2 = ( database_olr(5,neighbor1)*rbf - database_olr(5,neighbor2) ) / ( rbf*rbf - 1 )
+  weight1 = ( database_olr(4,neighbor2)*rbf - database_olr(4,neighbor1) ) / ( rbf*rbf - 1 )
+  weight2 = ( database_olr(4,neighbor1)*rbf - database_olr(4,neighbor2) ) / ( rbf*rbf - 1 )
+  !weight1 = ( database_olr(5,neighbor2)*rbf - database_olr(5,neighbor1) ) / ( rbf*rbf - 1 )
+  !weight2 = ( database_olr(5,neighbor1)*rbf - database_olr(5,neighbor2) ) / ( rbf*rbf - 1 )
   rbf1    = exp( -distance( neighbor1) / ( sigma**2 ) )
   rbf2    = exp( -distance( neighbor2) / ( sigma**2 ) )
 
   olr = weight1*rbf1 + weight2*rbf2
+  olr = -olr
 
   return
 
@@ -110,11 +116,11 @@ end subroutine getOLR
 
 !==================================================================================
 
-subroutine getPALB( pg0, fh2, fch4, tg0, zy, surfalb, palb )
+subroutine getPALB( pg0, fh2, fco2, tg0, zy, surfalb, palb )
 
   real, intent(in)  :: pg0
   real, intent(in)  :: fh2
-  real, intent(in)  :: fch4
+  real, intent(in)  :: fco2
   real, intent(in)  :: tg0
   real, intent(in)  :: zy
   real, intent(in)  :: surfalb
@@ -128,14 +134,16 @@ subroutine getPALB( pg0, fh2, fch4, tg0, zy, surfalb, palb )
   integer :: i, j
 
   difference(1,:) = ( database_alb(1,:) - pg0  )**2
-  difference(2,:) = ( database_alb(2,:) - fh2  )**2
-  difference(3,:) = ( database_alb(3,:) - fch4 )**2
-  difference(4,:) = ( database_alb(4,:) - tg0  )**2
-  difference(5,:) = ( database_alb(5,:) - zy  )**2
-  difference(6,:) = ( database_alb(6,:) - surfalb  )**2
+  difference(2,:) = ( database_alb(2,:) - fco2  )**2
+  !difference(3,:) = ( database_alb(3,:) - fh2 )**2
+  !difference(4,:) = ( database_alb(4,:) - tg0  )**2
+  !difference(5,:) = ( database_alb(5,:) - zy  )**2
+  !difference(6,:) = ( database_alb(6,:) - surfalb  )**2
+  difference(3,:) = ( database_alb(3,:) - tg0  )**2
+  difference(4,:) = ( database_alb(4,:) - zy  )**2
+  difference(5,:) = ( database_alb(5,:) - surfalb  )**2
   distance        = sum( difference, dim=1 )
   distance        = sqrt( distance )
-
 
   neighbor1 = 1
   neighbor2 = 2
@@ -147,8 +155,10 @@ subroutine getPALB( pg0, fh2, fch4, tg0, zy, surfalb, palb )
       neighbor2 = i
     end if
   end do
+  !print *, neighbor1, neighbor2
 
-  if ( database_alb(5,neighbor1) .le. -1 ) then
+  !if ( database_alb(5,neighbor1) .le. -1 ) then
+  if ( database_alb(4,neighbor1) .le. -1 ) then
     palb = -1
     return
   end if
@@ -158,14 +168,16 @@ subroutine getPALB( pg0, fh2, fch4, tg0, zy, surfalb, palb )
   diff(3) = ( database_alb(3,neighbor1) - database_alb(3,neighbor2) )**2
   diff(4) = ( database_alb(4,neighbor1) - database_alb(4,neighbor2) )**2
   diff(5) = ( database_alb(5,neighbor1) - database_alb(5,neighbor2) )**2
-  diff(6) = ( database_alb(6,neighbor1) - database_alb(6,neighbor2) )**2
+  !diff(6) = ( database_alb(6,neighbor1) - database_alb(6,neighbor2) )**2
   dist      = sqrt( sum( diff ) )
   sigma     = ( distance( neighbor1 ) + distance( neighbor2 ) ) / 2  
   sigma     = 100000.0
   rbf       = exp( -dist / ( sigma**2 ) )
 
-  weight1 = ( database_alb(7,neighbor2)*rbf - database_alb(7,neighbor1) ) / ( rbf*rbf - 1 )
-  weight2 = ( database_alb(7,neighbor1)*rbf - database_alb(7,neighbor2) ) / ( rbf*rbf - 1 )
+  weight1 = ( database_alb(6,neighbor2)*rbf - database_alb(6,neighbor1) ) / ( rbf*rbf - 1 )
+  weight2 = ( database_alb(6,neighbor1)*rbf - database_alb(6,neighbor2) ) / ( rbf*rbf - 1 )
+  !weight1 = ( database_alb(7,neighbor2)*rbf - database_alb(7,neighbor1) ) / ( rbf*rbf - 1 )
+  !weight2 = ( database_alb(7,neighbor1)*rbf - database_alb(7,neighbor2) ) / ( rbf*rbf - 1 )
   rbf1    = exp( -distance( neighbor1) / ( sigma**2 ) )
   rbf2    = exp( -distance( neighbor2) / ( sigma**2 ) )
 
