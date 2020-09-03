@@ -29,7 +29,7 @@ echo $sep
 ./driver
 
 head -n 12 $outfile && tail -n 30 $outfile | head -n 5
-head -n 33 $outfile | tail -n 18 > $outdir/zonal.out
+head -n 35 $outfile | tail -n 18 > $outdir/zonal.out
 tail -n 18 $outfile > $outdir/geog.out
 
 

@@ -92,8 +92,8 @@ c      parameter (niter=300000)
       character  header*80,file(0:3)*8
       logical seasons, last, linrad, linalb, cloudalb
       logical do_stochastic, soladj, constheatcap, diffadj, iterhalt
-      logical do_cs_cycle, do_h2_cycle
-      real landsnowfrac, RAND, boxmuller, noisevar, heatcap
+      logical do_cs_cycle, do_h2_cycle, oceanalbconst
+      real landsnowfrac, RAND, boxmuller, noisevar, heatcap, ocnalb
       real outgassing, weathering, betaexp, kact, krun, q0
       real pg0, ir2, fh2, co2sat, h2escape, ph2, ncolh2, h2outgas
       integer yrcnt, yrstep, radparam, co2flag
@@ -189,7 +189,7 @@ c  INITIALIZE VARIABLES
 
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
-     &               linrad, solarcon
+     &               linrad, solarcon, oceanalbconst, ocnalb
 
       NAMELIST /co2cycle/ do_cs_cycle, outgassing, weathering,
      &               betaexp, kact, krun
@@ -256,7 +256,7 @@ c SET UP INITIAL TEMPERATURE PROFILE
           pn2 = 0.0
           fh2 = 1.-fco2
         else 
-          pn2 = pg0
+          pn2 = 1.0
           pco2 = pg0*fco2
           pg0 = pn2 + pco2
           !pco2 = pg0*fco2
@@ -685,9 +685,12 @@ c  DIURNALLY-AVERAGED ZENITH ANGLE
                  
 c----------------------------------------------------------------------c
 c  HEAT CAPACITY and SURFACE ALBEDO                    
-
-      oceanalb = h20alb(int(z))
-
+ 
+      if ( oceanalbconst ) then
+        oceanalb = ocnalb
+      else
+        oceanalb = h20alb(int(z))
+      end if
 
       ! Added this check so fractional ice cover would only 
       ! occur for 263 < T < 273.  (JDH)

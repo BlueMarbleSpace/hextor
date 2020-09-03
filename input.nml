@@ -1,9 +1,9 @@
  &ebm
    seasons	= .true.,
-   tempinit     = 273.0,
+   tempinit     = 300.0,
    resfile      = 0,
    tend		= 7.e11, 
-   dt		= 2.16e4,
+   dt		= 1.08e4,
    rot		= 7.27e-5,
    a		= 1.49597892E13,
    ecc		= 0.0,
@@ -12,10 +12,10 @@
    d0           = 0.58,
    diffadj      = .true.,
    pg0          = 1.0,
-   fco2         = 3.3e-4,
+   fco2         = 4.0e-4,
    fh2          = 0.,
-   ocean	= 0.7,
-   igeog        = 1,
+   ocean	= 1.0,
+   igeog        = 4,
    constheatcap = .true.,
    heatcap      = 2.00e6
    yrstep       = 1,
@@ -23,17 +23,19 @@
    iterhalt     = .true. /
 
  &radiation
-   relsolcon	= 1.0,
-   solarcon     = 1360,
-   radparam     = 3, 
-   groundalb	= 0.3,
-   snowalb      = 0.663,
-   landsnowfrac = 1.00, 
-   cloudir	= 0.0, 
-   fcloud       = 0.0,
-   cloudalb     = .false.,
-   soladj       = .false.,
-   linrad       = .false. /
+   relsolcon	 = 1.0,
+   solarcon      = 1360,
+   radparam      = 3, 
+   groundalb	 = 0.3,
+   snowalb       = 0.3,
+   oceanalbconst = .true.,
+   ocnalb        = 0.3,
+   landsnowfrac  = 1.00, 
+   cloudir	 = 0.0, 
+   fcloud        = 0.0,
+   cloudalb      = .false.,
+   soladj        = .false.,
+   linrad        = .false. /
 
  &co2cycle
    do_cs_cycle  = .false.,
