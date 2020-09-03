@@ -66,7 +66,7 @@ c----------------------------------------------------------------------c
       real*8  ecc,m,e
 
       parameter (nbelts=18)
-      parameter (pi=3.14159265,grav=6.6732e-8,msun=1.9891e33)
+      parameter (pi=3.14159265,grav=6.6732e-8)
       parameter (mp=1.67e-24,cnvg=1.e-1)
       parameter (sbc=5.67e-8,emis=0.64)
       parameter (twopi=2*pi)
@@ -174,6 +174,7 @@ c  INITIALIZE VARIABLES
       yrstep = 1
       yrcnt = 0
       yricnt = 1
+      msun = 1.9891e33
       heatcap = cl
       snowalb = 0.663 ! changed this from 0.7 as per Caldiera & Kasting (JDH), added to namelist
       tempinit = 273.16
@@ -185,7 +186,7 @@ c  INITIALIZE VARIABLES
       NAMELIST /ebm/ seasons, tend, dt, rot, a, ecc, peri, 
      &               obl, ocean, igeog, yrstep, resfile, d0,
      &               linalb, constheatcap, heatcap, diffadj,
-     &               iterhalt, fco2, fh2, pg0, tempinit
+     &               iterhalt, fco2, fh2, pg0, tempinit, msun
 
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
