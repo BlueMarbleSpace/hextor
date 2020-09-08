@@ -15,7 +15,8 @@ public :: radiation_init, radiation_end, getOLR, getPALB
   integer, parameter :: dolr = 1748
   integer, parameter :: dalb = 34960
 
-  character*100 :: file_name = "./radiation/radiation_N2_CO2.h5"
+  !character*100 :: file_name = "./radiation/radiation_N2_CO2.h5"
+  character*100 :: file_name = "./radiation/radiation_N2_CO2_2600K.h5"
   !character*100 :: file_name = "./radiation_N2_CO2.h5"   !uncomment for standalone test with main.f90
   character*100 :: sds_olr   = "/olr"
   character*100 :: sds_alb   = "/palb"
