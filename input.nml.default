@@ -1,5 +1,6 @@
  &ebm
    seasons	= .true.,
+   do_manualseasons = .false.,
    tempinit     = 300.0,
    resfile      = 0,
    tend		= 7.e11, 
@@ -21,7 +22,8 @@
    yrstep       = 1,
    msun         = 1.9891e33,
    linalb       = .false.,
-   iterhalt     = .true. /
+   iterhalt     = .true.,
+   do_longitudinal = .false. /
 
  &radiation
    relsolcon	 = 1.0,

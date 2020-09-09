@@ -72,9 +72,11 @@ c----------------------------------------------------------------------c
       parameter (twopi=2*pi)
 c      parameter (niter=1)
 c      parameter (niter=300000)
-      parameter (niter=10)
+      parameter (niter=1)
       parameter (niterhalf=1001)
       parameter (niterquarter=1501)
+
+      parameter (ndays=1627)
    
       common/geogblk/cntrlat(nbelts),cntrlatangle(nbelts),coastlat,
      &   focean(nbelts),lat(0:nbelts+1),latangle(0:nbelts+1),ocean
@@ -92,16 +94,19 @@ c      parameter (niter=300000)
       character  header*80,file(0:3)*8
       logical seasons, last, linrad, linalb, cloudalb
       logical do_stochastic, soladj, constheatcap, diffadj, iterhalt
-      logical do_cs_cycle, do_h2_cycle, oceanalbconst
+      logical do_cs_cycle, do_h2_cycle, oceanalbconst 
+      logical do_longitudinal, do_manualseasons
       real landsnowfrac, RAND, boxmuller, noisevar, heatcap, ocnalb
       real outgassing, weathering, betaexp, kact, krun, q0
       real pg0, ir2, fh2, co2sat, h2escape, ph2, ncolh2, h2outgas
       integer yrcnt, yrstep, radparam, co2flag
-      integer ISEED, resfile
+      integer ISEED, resfile, nt, daynum
       integer*4 now(3)
       real total, snowalb, tempinit, solarcon
       dimension solcon(niter),prec(niter),ecce(niter),
      &  yrlabel(niter),obliq(niter)
+      dimension solconD(ndays),precD(ndays),ecceD(ndays),
+     &  yrlabelD(ndays),obliqD(ndays)
        
       data  temp/20*273./       !**use some temperature > 265K, otherwise iceball
       data  file/ 'spng.out', 'summ.out', 'fall.out', 'wint.out' /
@@ -178,6 +183,9 @@ c  INITIALIZE VARIABLES
       heatcap = cl
       snowalb = 0.663 ! changed this from 0.7 as per Caldiera & Kasting (JDH), added to namelist
       tempinit = 273.16
+      do_longitudinal = .false.
+      nt = 1          !counter for number of timesteps 
+      daynum = 1          !counter for number of days per orbit
 
       CALL itime( now )
       CALL SRAND( now(3) )
@@ -186,7 +194,8 @@ c  INITIALIZE VARIABLES
       NAMELIST /ebm/ seasons, tend, dt, rot, a, ecc, peri, 
      &               obl, ocean, igeog, yrstep, resfile, d0,
      &               linalb, constheatcap, heatcap, diffadj,
-     &               iterhalt, fco2, fh2, pg0, tempinit, msun
+     &               iterhalt, fco2, fh2, pg0, tempinit, msun,
+     &               do_longitudinal, do_manualseasons
 
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
@@ -219,7 +228,8 @@ c  OPEN FILES
       open (unit=17,file='out/co2clouds.out',status='unknown')
       open (unit=18,file='out/tempseries.out',status='unknown')
       open (unit=19,file='out/icelines.out',status='unknown')
-      open (unit=20,file='out/dailytempseries.out',status='unknown')
+      open (unit=20,file='out/dailytempseries.out',status='unknown')   
+      open (unit=98,file='data/Altair_inc90_a3.3.txt',status='old')
       open (unit=99,file='data/insolaout.dat',status='old')
 
 c  WRITE OBLIQUITY TO OUTPUT
@@ -333,7 +343,7 @@ c  SET SOLAR CONSTANT, ECCENTRICITY, AND OBLIQUITY
         rewind(99)
         do p = 1, niter, 1
            read(99,*) yrlabel(p),ecce(p),prec(p),obliq(p),solcon(p)
-           solcon(p) = 4*solcon(p) * relsolcon
+           solcon(p) = 4*solcon(p) * relsolcon    !for insolaout.dat
            prec(p)   = ASIN(prec(p)/ecce(p))*180/pi
         end do
       else
@@ -342,6 +352,15 @@ c  SET SOLAR CONSTANT, ECCENTRICITY, AND OBLIQUITY
           ecce(p)   = ecc
           obliq(p)  = obl
           prec(p)   = peri
+        end do
+      end if
+
+      if ( do_manualseasons ) then
+        rewind(98)
+        do p = 1, ndays, 1
+           read(98,*) yrlabelD(p),ecceD(p),precD(p),
+     &                obliqD(p),solconD(p)
+           solconD(p) = solconD(p) * relsolcon       !for Altair_inc90_a3.3.txt
         end do
       end if
 
@@ -430,6 +449,7 @@ c      write(15,233)
          t = t + dt
          tcalc = tcalc + dt
          tlast = tlast + dt
+         nt = nt + 1
       else
          write(*,*) 'Calculation time has elapsed.'
          goto 1000
@@ -464,6 +484,7 @@ c MEAN-ANNUAL CALCULATION
          t = t + dt
          tcalc = tcalc + dt
          tlast = tlast + dt
+         nt = nt + 1
       else
          write(*,*) 'Calculation time has elapsed.'
          goto 1000
@@ -680,7 +701,11 @@ c  DIURNALLY-AVERAGED ZENITH ANGLE
          h = acos(-x(k)*tan(dec)*((1-x(k)**2)**(-0.5)))
          mu(k) = x(k)*sin(dec) + cos(asin(x(k)))*cos(dec)*sin(h)/h
       end if
-  
+
+      if ( do_longitudinal ) then  
+        mu(k) = 1.0
+      end if
+
       z = acos(mu(k))*180./pi
       zrad = acos(mu(k))
                  
@@ -1033,7 +1058,6 @@ c      as = .216
         atoa(k) = term1 + term2 + term3 + term4 + term5 + term6
 
       else if ( radparam .eq. 3 ) then
-
         zendeg = mu(k)*180/pi
 
         call getPALB( pg0, fh2, fco2, temp(k), zendeg,        
@@ -1194,10 +1218,25 @@ c      STOP
 c----------------------------------------------------------------------c
 c  DIURNALLY-AVERAGED INSOLATION 
       
-      if (seasons) then
+      if ( do_manualseasons ) then
+         q = solconD( daynum )
+         if ( k .eq. nbelts ) then
+           daynum = daynum + 1
+           if ( mod( ndays, nt ) .eq. 0 ) daynum = 1
+           !print *, "day = ", daynum
+         end if
+      end if
+
+      if ( do_longitudinal ) then
+         if ((x(k) .le. sin(pi/4)) .and. (x(k) .ge. sin(-pi/4))) then 
+           s(k) = (q/pi) * cos( 2*asin(x(k)) )
+         else
+           s(k) = 0.0
+         end if
+      else if (seasons) then
          s(k) = (q/pi)*(x(k)*sin(dec)*h + 
      &        cos(asin(x(k)))*cos(dec)*sin(h))
-      else
+      else 
           ! for mean annual use the second Legendre polynomial
           p2   = (3*sin(lat(k))*sin(lat(k)) - 1) / 2
           s(k) = (q/pi)*(1 - 0.5*p2)
@@ -1211,9 +1250,6 @@ c  SURFACE TEMPERATURE - SOLVE ENERGY-BALANCE EQUATION
          !c(k) = 5.25e6 * 40
       end if
 
-! Ravi's stuff
-!      atoa(k) = 0.45
-
       if( do_stochastic ) then
         temp(k) = (diff(k)*t2prime(k)-ir(k)+s(k)*(1-atoa(k)))*dt/c(k) 
      &            + sqrt(noisevar)*boxmuller()
@@ -1222,9 +1258,6 @@ c  SURFACE TEMPERATURE - SOLVE ENERGY-BALANCE EQUATION
         temp(k) = (diff(k)*t2prime(k)-ir(k)+s(k)*(1-atoa(k)))*dt/c(k) 
      &            + temp(k)
       end if
-
-c      print *, temp(k)
-c      STOP
 
 c      if ( temp(k) .le. 195.0 ) then    !changed to work with database
 c        temp(k) = 195.0
