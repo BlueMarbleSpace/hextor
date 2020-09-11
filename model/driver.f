@@ -1315,9 +1315,13 @@ c  **set pole temps equal to adjacent belt temps
 
       ! daily output could get large--comment this block if needed for long integrations
       if( .not. last) then
-        write(20,609) t/dt+366*yrcnt,tempsum,pg0,pco2,co2flag,fh2,d
- 609    format(2x,f12.2,2x,f8.3,2x,e12.3,2x,e12.6,2x,i12,
+        write(20,609) t/dt+366*yrcnt,q,temp(1),temp(5),temp(9),pg0,
+     &    pco2,fh2,co2flag,d
+ 609    format(2x,f12.2,f12.2,f12.2,f12.2,2x,f8.3,2x,e12.3,2x,e12.6,2x,i12,
      &    2x,f8.5,2x,f8.5)
+        !write(20,609) t/dt+366*yrcnt,tempsum,pg0,pco2,co2flag,fh2,d
+! 609    format(2x,f12.2,2x,f8.3,2x,e12.3,2x,e12.6,2x,i12,
+!     &    2x,f8.5,2x,f8.5)
       end if
 
 
