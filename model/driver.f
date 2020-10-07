@@ -72,7 +72,7 @@ c----------------------------------------------------------------------c
       parameter (twopi=2*pi)
 c      parameter (niter=1)
 c      parameter (niter=300000)
-      parameter (niter=1)
+      parameter (niter=5)
       parameter (niterhalf=1001)
       parameter (niterquarter=1501)
 
@@ -89,7 +89,7 @@ c      parameter (niter=300000)
      &  zntempsum(nbelts),zntempave(0:nbelts+1),zndecmax(nbelts),
      &  zndecmin(nbelts),obstemp(nbelts),iceline(0:5),fice(nbelts),
      &  wthrate(nbelts),warea(nbelts),imco2(nbelts), diff(nbelts),
-     &  stab(0:nbelts)
+     &  stab(0:nbelts), znalbsum(nbelts), znalbave(nbelts)
 
       character  header*80,file(0:3)*8
       logical seasons, last, linrad, linalb, cloudalb
@@ -1305,6 +1305,7 @@ c  ZONAL STATISTICS - if last loop
       zntempmax(k) = amax1(zntempmax(k),temp(k))
       if (zntempmax(k).eq.temp(k)) zndecmax(k) = decangle
       zntempsum(k) = zntempsum(k) + temp(k)
+      znalbsum(k)  = znalbsum(k) + atoa(k)
 
  310  continue                                     !**end of belt loop
 
@@ -1468,6 +1469,7 @@ c ZONAL SEASONAL AVERAGES
       nhtempave = 0
       do 732 k = 1, nbelts, 1
          zntempave(k) = zntempsum(k) / nstep
+         znalbave(k) = znalbsum(k) / nstep
          if ( k .le. nbelts/2 ) then
            shtempave = shtempave + zntempave(k)
          else
@@ -1493,7 +1495,7 @@ c  FIND ICE-LINES (ANNUAL-AVERAGE TEMP < 263.15K)
       do 750 k=1,nbelts,1
          write(15,751) latangle(k),zntempave(k),zntempmin(k),
      &      zndecmin(k),zntempmax(k),zndecmax(k),
-     &      atoa(k)
+     &      znalbave(k)
 c-nb     &      (zntempmax(k)-zntempmin(k))/2.
  751     format(4x,f4.0,9x,f8.3,5x,f8.3,5x,f6.2,5x,f8.3,5x,f6.2,5x,f8.3)
          write(16,752) latangle(k),(zntempmax(k)-zntempmin(k))/2.,

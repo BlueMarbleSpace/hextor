@@ -15,7 +15,8 @@ public :: radiation_init, radiation_end, getOLR, getPALB
   integer, parameter :: dolr = 1748
   integer, parameter :: dalb = 34960
 
-  character*100 :: file_name = "./radiation/radiation_N2_CO2.h5"
+  !character*100 :: file_name = "./radiation/radiation_N2_CO2.h5"
+  character*100 :: file_name = "./radiation/radiation_N2_CO2_Sun.h5"
   !character*100 :: file_name = "./radiation/radiation_N2_CO2_2600K.h5"
   !character*100 :: file_name = "./radiation_N2_CO2.h5"   !uncomment for standalone test with main.f90
   character*100 :: sds_olr   = "/olr"
@@ -124,6 +125,7 @@ subroutine getPALB( pg0, fh2, fco2, tg0, zy, surfalb, palb )
   real, intent(in)  :: fco2
   real, intent(in)  :: tg0
   real, intent(in)  :: zy
+  !real, intent(inout)  :: zy
   real, intent(in)  :: surfalb
   real, intent(out) :: palb
 
@@ -133,6 +135,10 @@ subroutine getPALB( pg0, fh2, fco2, tg0, zy, surfalb, palb )
   real    :: sigma, weight1, weight2, rbf1, rbf2, rbf, dist
   integer :: neighbor1, neighbor2
   integer :: i, j
+
+  !if ( zy .gt. 89 ) then 
+  !  zy = 89.0
+  !end if
 
   difference(1,:) = ( database_alb(1,:) - pg0  )**2
   difference(2,:) = ( database_alb(2,:) - fco2  )**2
