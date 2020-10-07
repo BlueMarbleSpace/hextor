@@ -1389,7 +1389,7 @@ c  SEASONAL AVERAGING
 c      write(19,712) pco2,zntempave(1:nbelts)
 c 712  format(2x,f12.3,20(2x,f8.3))
 
-        write(19,712) pco2,temp
+c        write(19,712) pco2,temp
  712    format(2x,f12.3,20(2x,f8.3))
       
       if ((yrcnt.gt.126e6).and.(yrcnt.lt.192e6)) then
@@ -1522,12 +1522,12 @@ c        write(19,766) relsolcon, -90.0, 90.0
  762       format(2x,'ice-line latitude = ',f5.1,' degrees.')
  765    continue
         if((nedge.eq.2)) then
-c          write(19,766) relsolcon, iceline(1), iceline(2)
+           write(19,766) relsolcon, iceline(1), iceline(2)
         else
           if(iceline(1) .gt. 0.0) then
-c            write(19,766) relsolcon, -90.0, iceline(1)
+             write(19,766) relsolcon, -90.0, iceline(1)
           else
-c            write(19,766) relsolcon, iceline(1), 90.0
+             write(19,766) relsolcon, iceline(1), 90.0
           end if
         end if
  766    format(f5.3,2x,f8.3,2x,f8.3)
