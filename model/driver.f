@@ -70,9 +70,9 @@ c----------------------------------------------------------------------c
       parameter (mp=1.67e-24,cnvg=1.e-1)
       parameter (sbc=5.67e-8,emis=0.64)
       parameter (twopi=2*pi)
-c      parameter (niter=1)
+      parameter (niter=1)
 c      parameter (niter=300000)
-      parameter (niter=5)
+c      parameter (niter=5)
       parameter (niterhalf=1001)
       parameter (niterquarter=1501)
 
@@ -1512,10 +1512,10 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
  760  format(/ 'ICE LINES (Tave = 263K)')
       if((nedge.eq.0).and.(zntempave(nbelts/2).le.263.)) then
       	write(15,*) '  planet is an ice-ball.' 
-c        write(19,766) relsolcon, 0.0, 0.0
+        write(19,766) relsolcon, 0.0, 0.0
       else if((nedge.eq.0).and.(zntempave(nbelts/2).gt.263.)) then
      	write(15,*) '  planet is ice-free.'
-c        write(19,766) relsolcon, -90.0, 90.0
+        write(19,766) relsolcon, -90.0, 90.0
       else
         do 765 k=1,nedge,1
            write(15,762) iceline(k)
