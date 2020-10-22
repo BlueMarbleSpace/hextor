@@ -8,7 +8,8 @@ FC 	= /usr/bin/h5pfc
 WDIR	= /models/hextor/model
 #############################################
 
-FLAGS	= -O3 -xHost -ipo -r8 -align all -i-static -warn nogeneral
+FLAGS	= -parallel -O2 -xHost -ipo -r8 -align all -i-static -warn nogeneral 
+#FLAGS	= -O3 -xHost -ipo -r8 -align all -i-static -warn nogeneral
 TARGET	= driver
 OBJECTS = radiation.o driver.o
 

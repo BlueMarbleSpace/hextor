@@ -70,9 +70,9 @@ c----------------------------------------------------------------------c
       parameter (mp=1.67e-24,cnvg=1.e-1)
       parameter (sbc=5.67e-8,emis=0.64)
       parameter (twopi=2*pi)
-      parameter (niter=1)
+c      parameter (niter=1)
 c      parameter (niter=300000)
-c      parameter (niter=5)
+      parameter (niter=50)
       parameter (niterhalf=1001)
       parameter (niterquarter=1501)
 
@@ -107,7 +107,7 @@ c      parameter (niter=5)
      &  yrlabel(niter),obliq(niter)
       dimension solconD(ndays),precD(ndays),ecceD(ndays),
      &  yrlabelD(ndays),obliqD(ndays)
-       
+
       data  temp/20*273./       !**use some temperature > 265K, otherwise iceball
       data  file/ 'spng.out', 'summ.out', 'fall.out', 'wint.out' /
 
@@ -193,13 +193,13 @@ c  INITIALIZE VARIABLES
 
       NAMELIST /ebm/ seasons, tend, dt, rot, a, ecc, peri, 
      &               obl, ocean, igeog, yrstep, resfile, d0,
-     &               linalb, constheatcap, heatcap, diffadj,
+     &               constheatcap, heatcap, diffadj,
      &               iterhalt, fco2, fh2, pg0, tempinit, msun,
      &               do_longitudinal, do_manualseasons
 
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
-     &               linrad, solarcon, oceanalbconst, ocnalb
+     &               linrad, linalb, solarcon, oceanalbconst, ocnalb
 
       NAMELIST /co2cycle/ do_cs_cycle, outgassing, weathering,
      &               betaexp, kact, krun
@@ -330,11 +330,10 @@ c SET UP GEOGRAPHY
 
 
 c Set diffusion coefficient
-      do k = 1, nbelts, 1
-
-        diff(k) = d0
-
-      end do
+      diff(:) = d0
+      !do k = 1, nbelts, 1
+      !  diff(k) = d0
+      !end do
 
 c----------------------------------------------------------------------c
 c  SET SOLAR CONSTANT, ECCENTRICITY, AND OBLIQUITY
@@ -623,7 +622,6 @@ c    of 4.59 Wm^-2.)
         olrval = 0.0
         call getOLR( pg0, fh2, fco2, temp(k), olrval ) 
         ir(k) = olrval / 1000.
-
         if ( ir(k) .le. -1. ) then
           print *, "radiation_mod: OLR solution unstable"
           print *, ir(k)

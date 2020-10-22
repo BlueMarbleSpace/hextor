@@ -1,8 +1,8 @@
  &ebm
    seasons	= .true.,
    do_manualseasons = .false.,
-   tempinit     = 273.0,
-   resfile      = 0,
+   tempinit     = TTT,
+   resfile      = RRR,
    tend		= 7.e11, 
    dt		= 4.32e4,
    rot		= 7.27e-5,
@@ -25,7 +25,7 @@
    do_longitudinal = .false. /
 
  &radiation
-   relsolcon	 = 1.0,
+   relsolcon	 = XXX,
    solarcon      = 1360,
    radparam      = 3, 
    groundalb	 = 0.30,
