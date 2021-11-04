@@ -1,0 +1,3 @@
+[submodule "model/radiation/ffhash"]
+	path = model/radiation/ffhash
+	url = https://github.com/jannisteunissen/ffhash
