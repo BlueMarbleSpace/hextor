@@ -28,24 +28,21 @@ pco2levels = (/ 1.e-6,3.e-6,6.e-6,1.e-5, 3.e-5, 6.e-5,1.e-4, &
 
 call radiation_init
 
-call hash_table_init
-
-stop
-
 do temp = tstart, tend, tstep
   do i = 1, 28
 
     pco2 = pco2levels(i)
+
     ptot = pg0 + pco2
     fco2 = pco2 / ptot
 
     tg0 = real( temp )
 
-    call getOLR( ptot, fco2, tg0, olr )
-    print *, olr / 1000.
+    !call getOLR( fco2, tg0, olr )
+    !print *, olr / 1000.
 
-    call getPALB( ptot, fco2, tg0, zy, surfalb, palb )
-    !print *, palb
+    call getPALB( fco2, tg0, zy, surfalb, palb )
+    print *, palb
   
   end do
 
