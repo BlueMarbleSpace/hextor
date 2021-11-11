@@ -1,8 +1,8 @@
 module radiation_mod
-
 !==================================================================================
 
   use hdf5
+  use m_ffhash
 
 !==================================================================================
 implicit none
@@ -15,10 +15,10 @@ public :: radiation_init, radiation_end, getOLR, getPALB
   integer, parameter :: dolr = 1748
   integer, parameter :: dalb = 34960
 
-  !character*100 :: file_name = "./radiation/radiation_N2_CO2.h5"
-  character*100 :: file_name = "./radiation/radiation_N2_CO2_Sun.h5"
+  !character*100 :: file_name = "./radiation/radiation_N2_CO2_Sun.h5"
   !character*100 :: file_name = "./radiation/radiation_N2_CO2_2600K.h5"
-  !character*100 :: file_name = "./radiation_N2_CO2.h5"   !uncomment for standalone test with main.f90
+  character*100 :: file_name = "./radiation_N2_CO2_2600K.h5"   !uncomment for standalone test with main.f90
+  !character*100 :: file_name = "./radiation_N2_CO2_Sun.h5"   !uncomment for standalone test with main.f90
   character*100 :: sds_olr   = "/olr"
   character*100 :: sds_alb   = "/palb"
   integer(HID_T):: file_id, olr_id, alb_id
@@ -29,6 +29,10 @@ public :: radiation_init, radiation_end, getOLR, getPALB
   real, dimension(nolr)             :: weights
   integer(HSIZE_T), dimension(nolr) :: dims_olr 
   integer(HSIZE_T), dimension(nalb) :: dims_alb
+
+  type(ffh_t)  :: h_olr, h_alb
+  character*10 :: string1, string2
+  character*20 :: stringkey
 
 contains
 
@@ -51,10 +55,39 @@ end subroutine radiation_init
 
 !==================================================================================
 
-subroutine getOLR( pg0, fh2, fco2, tg0, olr )
+subroutine hash_table_init
+
+  integer :: i
+
+  print *, "Initializing hash table..."
+
+  do i = 1, dolr
+    write( string1, '(F10.6)' ) database_olr(2,i)
+    write( string2, '(F10.6)' ) database_olr(3,i)
+    stringkey = string1 // string2
+    call h_olr%ustore_value( stringkey, database_olr(4,i) )
+  end do
+
+  do i = 1, dalb
+    write( string1, '(F10.6)' ) database_alb(2,i)
+    write( string2, '(F10.6)' ) database_alb(3,i)
+    stringkey = string1 // string2
+    call h_olr%ustore_value( stringkey, database_alb(4,i) )
+  end do
+
+  print *, "...done!"
+
+  return
+
+end subroutine hash_table_init
+
+
+!==================================================================================
+
+subroutine getOLR( pg0, fco2, tg0, olr )
 
   real, intent(in)  :: pg0
-  real, intent(in)  :: fh2
+  !real, intent(in)  :: fh2
   real, intent(in)  :: fco2
   real, intent(in)  :: tg0
   real, intent(out) :: olr
@@ -64,7 +97,7 @@ subroutine getOLR( pg0, fh2, fco2, tg0, olr )
   real, dimension(dolr)        :: distance
   real    :: sigma, weight1, weight2, rbf1, rbf2, rbf, dist
   integer :: neighbor1, neighbor2
-  integer :: i, j
+  integer :: i
 
   difference(1,:) = ( database_olr(1,:) - pg0  )**2
   difference(2,:) = ( database_olr(2,:) - fco2  )**2
@@ -118,10 +151,10 @@ end subroutine getOLR
 
 !==================================================================================
 
-subroutine getPALB( pg0, fh2, fco2, tg0, zy, surfalb, palb )
+subroutine getPALB( pg0, fco2, tg0, zy, surfalb, palb )
 
   real, intent(in)  :: pg0
-  real, intent(in)  :: fh2
+  !real, intent(in)  :: fh2
   real, intent(in)  :: fco2
   real, intent(in)  :: tg0
   real, intent(in)  :: zy
@@ -134,7 +167,7 @@ subroutine getPALB( pg0, fh2, fco2, tg0, zy, surfalb, palb )
   real, dimension(dalb)        :: distance
   real    :: sigma, weight1, weight2, rbf1, rbf2, rbf, dist
   integer :: neighbor1, neighbor2
-  integer :: i, j
+  integer :: i
 
   !if ( zy .gt. 89 ) then 
   !  zy = 89.0
