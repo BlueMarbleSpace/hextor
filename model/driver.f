@@ -59,7 +59,6 @@ c
 c----------------------------------------------------------------------c
 
       use radiation_mod
-
     
       real*4  lat,latangle,mu,ir,msun,landalb,icealb,irsum,irave,mp,
      &  iravesum,iceline,icelat,icesht
@@ -110,6 +109,25 @@ c      parameter (niter=300000)
 
       data  temp/20*273./       !**use some temperature > 265K, otherwise iceball
       data  file/ 'spng.out', 'summ.out', 'fall.out', 'wint.out' /
+
+
+      NAMELIST /ebm/ seasons, tend, dt, rot, a, ecc, peri, 
+     &               obl, ocean, igeog, yrstep, resfile, d0,
+     &               constheatcap, heatcap, diffadj,
+     &               iterhalt, fco2, fh2, pg0, tempinit, msun,
+     &               do_longitudinal, do_manualseasons
+
+      NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
+     &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
+     &               linrad, linalb, solarcon, oceanalbconst, ocnalb
+
+      NAMELIST /co2cycle/ do_cs_cycle, outgassing, weathering,
+     &               betaexp, kact, krun
+
+      NAMELIST /h2cycle/ do_h2_cycle, h2outgas
+
+      NAMELIST /stochastic/ do_stochastic, noisevar
+
 
 c  NAMELIST PARAMETERS
       INTEGER namelistid
@@ -189,24 +207,6 @@ c  INITIALIZE VARIABLES
 
       CALL itime( now )
       CALL SRAND( now(3) )
-
-
-      NAMELIST /ebm/ seasons, tend, dt, rot, a, ecc, peri, 
-     &               obl, ocean, igeog, yrstep, resfile, d0,
-     &               constheatcap, heatcap, diffadj,
-     &               iterhalt, fco2, fh2, pg0, tempinit, msun,
-     &               do_longitudinal, do_manualseasons
-
-      NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
-     &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
-     &               linrad, linalb, solarcon, oceanalbconst, ocnalb
-
-      NAMELIST /co2cycle/ do_cs_cycle, outgassing, weathering,
-     &               betaexp, kact, krun
-
-      NAMELIST /h2cycle/ do_h2_cycle, h2outgas
-
-      NAMELIST /stochastic/ do_stochastic, noisevar
 
       READ( namelistid, NML=ebm )
       READ( namelistid, NML=radiation )
@@ -288,22 +288,22 @@ c SET UP INITIAL TEMPERATURE PROFILE
         do k = 1, nbelts, 1
           temp(k) = tempinit
         end do   
-      else if( resfile .eq. 1 ) then	!restart from last run
+      else if( resfile .eq. 1 ) then !restart from last run
         rewind(6)
         do k = 1, nbelts, 1
            read(6,*) temp(k)
         end do
-      else if( resfile .eq. 2 ) then	!restart from present Earth
+      else if( resfile .eq. 2 ) then !restart from present Earth
         rewind(4)
         do k = 1, nbelts, 1
            read(4,*) temp(k)
         end do
-      else if( resfile .eq. 3 ) then	!restart from hothouse
+      else if( resfile .eq. 3 ) then !restart from hothouse
         rewind(5)
         do k = 1, nbelts, 1
            read(5,*) temp(k)
         end do
-      else if( resfile .eq. 4 ) then	!restart from big ice cap
+      else if( resfile .eq. 4 ) then !restart from big ice cap
         rewind(7)
         do k = 1, nbelts, 1
            read(7,*) temp(k)
@@ -402,7 +402,7 @@ c      write(15,147) 'FRESNEL REFLECTANCE TABLE'
          n1 = 10*(i-1) 
          n2 = n1+9
          read(3,148) (h20alb(n),n=n1,n2)
- 148     format(17x,2p10(f4.1,1x))
+ 148     format(17x,2p,10(f4.1,1x))
 c         write(15,146) (h20alb(n),n=n1,n2)
  149  continue
       h20alb(90) = 1.00
@@ -1317,8 +1317,10 @@ c  **set pole temps equal to adjacent belt temps
       if( .not. last) then
         write(20,609) t/dt+366*yrcnt,q,temp(1),temp(5),temp(9),pg0,
      &    pco2,fh2,co2flag,d
- 609    format(2x,f12.2,f12.2,f12.2,f12.2,2x,f8.3,2x,e12.3,2x,e12.6,2x,i12,
-     &    2x,f8.5,2x,f8.5)
+ 609    format(2x,f12.2,f12.2,f12.2,f12.2,2x,f8.3,2x,e12.3,2x,e12.6,
+     &         2x,f8.5,2x,i12,2x,f8.5)
+! 609    format(2x,f12.2,f12.2,f12.2,f12.2,2x,f8.3,2x,e12.3,2x,e12.6,
+!     &         2x,i12,2x,f8.5,2x,f8.5)
         !write(20,609) t/dt+366*yrcnt,tempsum,pg0,pco2,co2flag,fh2,d
 ! 609    format(2x,f12.2,2x,f8.3,2x,e12.3,2x,e12.6,2x,i12,
 !     &    2x,f8.5,2x,f8.5)
@@ -1513,7 +1515,7 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
       	write(15,*) '  planet is an ice-ball.' 
         write(19,766) relsolcon, 0.0, 0.0
       else if((nedge.eq.0).and.(zntempave(nbelts/2).gt.263.)) then
-     	write(15,*) '  planet is ice-free.'
+        write(15,*) '  planet is ice-free.'
         write(19,766) relsolcon, -90.0, 90.0
       else
         do 765 k=1,nedge,1
