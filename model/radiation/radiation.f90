@@ -20,10 +20,10 @@ public :: radiation_init, radiation_end, getOLR, getPALB
   integer, parameter :: nsab = 5
 
 
-  character*100 :: file_name = "./radiation/radiation_N2_CO2_Sun.h5"
+  !character*100 :: file_name = "./radiation/radiation_N2_CO2_Sun.h5"
   !character*100 :: file_name = "./radiation/radiation_N2_CO2_2600K.h5"
   !character*100 :: file_name = "./radiation_N2_CO2_2600K.h5"   !uncomment for standalone test with main.f90
-  !character*100 :: file_name = "./radiation_N2_CO2_Sun.h5"   !uncomment for standalone test with main.f90
+  character*100 :: file_name = "./radiation_N2_CO2_Sun.h5"   !uncomment for standalone test with main.f90
   character*100 :: sds_olr   = "/olr"
   character*100 :: sds_alb   = "/palb"
   integer(HID_T):: file_id, olr_id, alb_id
@@ -169,8 +169,8 @@ subroutine getOLR( fco2, tg0, olr )
         frac(2) = abs( tg0 - tmppts(1) ) / abs( tmppts(2) - tmppts(1) )
       end if
 
-      olr = olrpts(1) + maxval( frac ) * ( olrpts(2) - olrpts(1) )
-      !olr = olrpts(1) + ( frac(2) ) * ( olrpts(2) - olrpts(1) )
+      !olr = olrpts(1) + maxval( frac ) * ( olrpts(2) - olrpts(1) )
+      olr = olrpts(1) + ( frac(2) ) * ( olrpts(2) - olrpts(1) )
       !olr = ( olrpts(2) + olrpts(1) ) / 2
 
     end if
