@@ -102,7 +102,7 @@ c      parameter (niter=300000)
       integer yrcnt, yrstep, radparam, co2flag
       integer ISEED, resfile, nt, daynum
       integer*4 now(3)
-      real total, snowalb, tempinit, solarcon
+      real total, snowalb, tempinit, solarcon, fco2
       dimension solcon(niter),prec(niter),ecce(niter),
      &  yrlabel(niter),obliq(niter)
       dimension solconD(ndays),precD(ndays),ecceD(ndays),
@@ -620,7 +620,7 @@ c    of 4.59 Wm^-2.)
       else if ( radparam .eq. 3 ) then
 
         olrval = 0.0
-        call getOLR( pg0, fh2, fco2, temp(k), olrval ) 
+        call getOLR( fco2, temp(k), olrval ) 
         ir(k) = olrval / 1000.
         if ( ir(k) .le. -1. ) then
           print *, "radiation_mod: OLR solution unstable"
@@ -1058,7 +1058,7 @@ c      as = .216
       else if ( radparam .eq. 3 ) then
         zendeg = mu(k)*180/pi
 
-        call getPALB( pg0, fh2, fco2, temp(k), zendeg,        
+        call getPALB( fco2, temp(k), zendeg,        
      &                surfalb(k), atoa(k) )
 
         if ( atoa(k) .le. -1 ) then
@@ -1230,6 +1230,7 @@ c  DIURNALLY-AVERAGED INSOLATION
            s(k) = (q/pi) * cos( 2*asin(x(k)) )
          else
            s(k) = 0.0
+           ir(k) = ir(k) + cloudir
          end if
       else if (seasons) then
          s(k) = (q/pi)*(x(k)*sin(dec)*h + 
