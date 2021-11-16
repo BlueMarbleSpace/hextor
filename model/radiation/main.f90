@@ -7,20 +7,14 @@ use radiation_mod
 
 implicit none
 
-integer :: i
-real :: pg0     = 1.0
-!real :: fh2     = 0.0
-!real :: tg0     = 288.0
-real :: zy      = 60.0
-real :: surfalb = 0.30
-real :: olr, palb
-real :: fco2, pco2, ptot
-!real :: ir, phi, tmpk, term1, term2
-!real :: phistart = -5.5, phiend = 10.5, phistep=0.1
+real                :: pg0     = 1.0
+real                :: zy      = 60.0
+real                :: surfalb = 0.30
+real                :: fco2, pco2, ptot, olr, palb, tg0
 real, dimension(28) :: pco2levels
 
-integer :: temp, tstart=190, tend=370, tstep=1
-real    :: tg0
+integer             :: temp, tstart=190, tend=370, tstep=1
+integer             :: i
 
 pco2levels = (/ 1.e-6,3.e-6,6.e-6,1.e-5, 3.e-5, 6.e-5,1.e-4, &
 3.e-4, 6.e-4,1.e-3, 3.e-3, 6.e-3,1.e-2, 3.e-2, 6.e-2,1.e-1,  &
@@ -38,11 +32,11 @@ do temp = tstart, tend, tstep
 
     tg0 = real( temp )
 
-    !call getOLR( fco2, tg0, olr )
-    !print *, olr / 1000.
+    call getOLR( fco2, tg0, olr )
+    print *, olr / 1000.
 
     call getPALB( fco2, tg0, zy, surfalb, palb )
-    print *, palb
+    !print *, palb
   
   end do
 

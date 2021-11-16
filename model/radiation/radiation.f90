@@ -20,9 +20,9 @@ public :: radiation_init, radiation_end, getOLR, getPALB
   integer, parameter :: nsab = 5
 
 
-  !character*100 :: file_name = "./radiation/radiation_N2_CO2_Sun.h5"
+  character*100 :: file_name = "./radiation/radiation_N2_CO2_Sun.h5"
   !character*100 :: file_name = "./radiation/radiation_N2_CO2_2600K.h5"
-  character*100 :: file_name = "./radiation_N2_CO2_2600K.h5"   !uncomment for standalone test with main.f90
+  !character*100 :: file_name = "./radiation_N2_CO2_2600K.h5"   !uncomment for standalone test with main.f90
   !character*100 :: file_name = "./radiation_N2_CO2_Sun.h5"   !uncomment for standalone test with main.f90
   character*100 :: sds_olr   = "/olr"
   character*100 :: sds_alb   = "/palb"
@@ -96,7 +96,7 @@ subroutine getOLR( fco2, tg0, olr )
   real, dimension(nco2) :: fco2diff
   real, dimension(ntmp) :: tempdiff
   real, dimension(2)    :: co2pts, tmppts, olrpts
-  real                  :: frac1, frac2
+  real, dimension(2)    :: frac
   integer               :: co2ind, tmpind, nextind
 
   character*10 :: string1co2, string2co2, string1tmp, string2tmp
@@ -124,10 +124,10 @@ subroutine getOLR( fco2, tg0, olr )
   end if
   co2pts(1) = fco2levels( co2ind )
   co2pts(2) = fco2levels( nextind )
-  write( string1co2, '(F10.8)' ) fco2levels( co2ind )
-  write( string2co2, '(F10.8)' ) fco2levels( nextind )
+  write( string1co2, '(F10.8)' ) co2pts(1)
+  write( string2co2, '(F10.8)' ) co2pts(2)
 
-  if ( tempdiff( tmpind ) .eq. 0.0 ) then
+  if ( ( tempdiff( tmpind ) .eq. 0.0 ) .or. ( tg0 .lt. templevels(1) ) .or. ( tg0 .gt. templevels(ntmp) ) ) then
     nextind = tmpind
   else 
     if ( tmpind .eq. 1 ) then 
@@ -144,8 +144,8 @@ subroutine getOLR( fco2, tg0, olr )
   end if
   tmppts(1) = templevels( tmpind )
   tmppts(2) = templevels( nextind )
-  write( string1tmp, '(F5.1)' ) templevels( tmpind )
-  write( string2tmp, '(F5.1)' ) templevels( nextind )
+  write( string1tmp, '(F5.1)' ) tmppts(1)
+  write( string2tmp, '(F5.1)' ) tmppts(2)
 
   stringkey1 = string1co2 // string1tmp
   stringkey2 = string2co2 // string2tmp
@@ -159,16 +159,20 @@ subroutine getOLR( fco2, tg0, olr )
       olr = 1.0
     else
       if ( co2pts(1) .eq. co2pts(2) ) then
-        frac1 = 1.0
+        frac(1) = 0.0
       else
-        frac1 = ( log10( fco2 ) - log10( co2pts(1) ) ) / ( log10( co2pts(2) ) - log10( co2pts(1) ) )
+        frac(1) = abs( log10( fco2 ) - log10( co2pts(1) ) ) / abs( log10( co2pts(2) ) - log10( co2pts(1) ) )
       end if
       if ( tmppts(1) .eq. tmppts(2) ) then
-        frac2 = 1.0
+        frac(2) = 0.0
       else
-        frac2 = ( tg0 - tmppts(1) ) / ( tmppts(2) - tmppts(1) )
+        frac(2) = abs( tg0 - tmppts(1) ) / abs( tmppts(2) - tmppts(1) )
       end if
-      olr = olrpts(1) + frac1 * frac2 * ( olrpts(2) - olrpts(1) )
+
+      olr = olrpts(1) + maxval( frac ) * ( olrpts(2) - olrpts(1) )
+      !olr = olrpts(1) + ( frac(2) ) * ( olrpts(2) - olrpts(1) )
+      !olr = ( olrpts(2) + olrpts(1) ) / 2
+
     end if
   end if
 
@@ -193,7 +197,7 @@ subroutine getPALB( fco2, tg0, zy, surfalb, palb )
   real, dimension(nzen)             :: zenidiff
   real, dimension(nsab)             :: albediff
   real, dimension(2)                :: co2pts, tmppts, zenpts, albpts, palbpts
-  real                              :: frac1, frac2, frac3, frac4
+  real, dimension(4)                :: frac
   integer                           :: co2ind, tmpind, zenind, albind, nextind
 
   character*10 :: string1co2, string2co2, string1tmp, string2tmp, string1zen, string2zen, string1alb, string2alb
@@ -228,7 +232,7 @@ subroutine getPALB( fco2, tg0, zy, surfalb, palb )
   write( string1co2, '(F10.8)' ) fco2levels( co2ind )
   write( string2co2, '(F10.8)' ) fco2levels( nextind )
 
-  if ( tempdiff( tmpind ) .eq. 0.0 ) then
+  if ( ( tempdiff( tmpind ) .eq. 0.0 ) .or. ( tg0 .lt. templevels(1) ) .or. ( tg0 .gt. templevels(ntmp) ) ) then
     nextind = tmpind
   else
     if ( tmpind .eq. 1 ) then
@@ -248,7 +252,7 @@ subroutine getPALB( fco2, tg0, zy, surfalb, palb )
   write( string1tmp, '(F5.1)' ) templevels( tmpind )
   write( string2tmp, '(F5.1)' ) templevels( nextind )
 
-  if ( zenidiff( zenind ) .eq. 0.0 ) then
+  if ( ( zenidiff( zenind ) .eq. 0.0 ) .or. ( zy .lt. zenilevels(1) ) .or. ( zy .gt. zenilevels(nzen) ) ) then
     nextind = zenind
   else
     if ( zenind .eq. 1 ) then
@@ -268,7 +272,7 @@ subroutine getPALB( fco2, tg0, zy, surfalb, palb )
   write( string1zen, '(F4.1)' ) zenilevels( zenind )
   write( string2zen, '(F4.1)' ) zenilevels( nextind )
 
-  if ( albediff( albind ) .eq. 0.0 ) then
+  if ( ( albediff( albind ) .eq. 0.0 ) .or. ( surfalb .lt. albelevels(1) ) .or. ( surfalb .gt. albelevels(nsab) ) ) then
     nextind = albind
   else
     if ( albind .eq. 1 ) then
@@ -300,26 +304,29 @@ subroutine getPALB( fco2, tg0, zy, surfalb, palb )
       palb = -1.0
     else
       if ( co2pts(1) .eq. co2pts(2) ) then
-        frac1 = 1.0
+        frac(1) = 0.0
       else
-        frac1 = ( log10( fco2 ) - log10( co2pts(1) ) ) / ( log10( co2pts(2) ) - log10( co2pts(1) ) )
+        frac(1) = abs( log10( fco2 ) - log10( co2pts(1) ) ) / abs( log10( co2pts(2) ) - log10( co2pts(1) ) )
       end if
       if ( tmppts(1) .eq. tmppts(2) ) then
-        frac2 = 1.0
+        frac(2) = 0.0
       else
-        frac2 = ( tg0 - tmppts(1) ) / ( tmppts(2) - tmppts(1) )
+        frac(2) = abs( tg0 - tmppts(1) ) / abs( tmppts(2) - tmppts(1) )
       end if
       if ( zenpts(1) .eq. zenpts(2) ) then
-        frac3 = 1.0
+        frac(3) = 0.0
       else
-        frac3 = ( zy - zenpts(1) ) / ( zenpts(2) - zenpts(1) )
+        frac(3) = abs( zy - zenpts(1) ) / abs( zenpts(2) - zenpts(1) )
       end if
       if ( albpts(1) .eq. albpts(2) ) then
-        frac4 = 1.0
+        frac(4) = 0.0
       else
-        frac4 = ( surfalb - albpts(1) ) / ( albpts(2) - albpts(1) )
+        frac(4) = abs( surfalb - albpts(1) ) / abs( albpts(2) - albpts(1) )
       end if
-      palb = palbpts(1) + frac1 * frac2 * frac3 * frac4 * ( palbpts(2) - palbpts(1) )
+
+      palb = palbpts(1) + maxval( frac ) * ( palbpts(2) - palbpts(1) )
+      !palb = ( palbpts(2) + palbpts(1) ) / 2
+      !palb = palbpts(1) + ( frac(2) ) * ( palbpts(2) - palbpts(1) )
     end if
   end if
 
