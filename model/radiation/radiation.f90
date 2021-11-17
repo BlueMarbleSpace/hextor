@@ -335,7 +335,8 @@ subroutine getPALB( fco2, tg0, zy, surfalb, palb )
   else
     palb1 = palbpts(1) + maxval( frac(:2) ) * ( palbpts(2) - palbpts(1) )
     palb2 = palbpts(3) + maxval( frac(:2) ) * ( palbpts(4) - palbpts(3) )
-    palb  = palb1 + maxval( frac(3:) ) * abs( palb2 - palb1 ) 
+    !palb  = palb1 + maxval( frac(3:) ) * abs( palb2 - palb1 ) 
+    palb  = palb1 + maxval( frac(3:) ) * ( palb2 - palb1 ) 
   end if
 
   return
