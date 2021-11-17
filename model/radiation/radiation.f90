@@ -20,10 +20,10 @@ public :: radiation_init, radiation_end, getOLR, getPALB
   integer, parameter :: nsab = 5
 
 
-  character*100 :: file_name = "./radiation/radiation_N2_CO2_Sun.h5"
+  !character*100 :: file_name = "./radiation/radiation_N2_CO2_Sun.h5"
   !character*100 :: file_name = "./radiation/radiation_N2_CO2_2600K.h5"
   !character*100 :: file_name = "./radiation_N2_CO2_2600K.h5"   !uncomment for standalone test with main.f90
-  !character*100 :: file_name = "./radiation_N2_CO2_Sun.h5"   !uncomment for standalone test with main.f90
+  character*100 :: file_name = "./radiation_N2_CO2_Sun.h5"   !uncomment for standalone test with main.f90
   character*100 :: sds_olr   = "/olr"
   character*100 :: sds_alb   = "/palb"
   integer(HID_T):: file_id, olr_id, alb_id
@@ -147,8 +147,22 @@ subroutine getOLR( fco2, tg0, olr )
   write( string1tmp, '(F5.1)' ) tmppts(1)
   write( string2tmp, '(F5.1)' ) tmppts(2)
 
-  stringkey1 = string1co2 // string1tmp
-  stringkey2 = string2co2 // string2tmp
+  if ( tmppts(1) .eq. tmppts(2) ) then 
+    if ( co2pts(1) .eq. co2pts(2) ) then
+      frac(1) = 0.0
+      frac(2) = 0.0
+    else
+      frac(1) = abs( log10( fco2 ) - log10( co2pts(1) ) ) / abs( log10( co2pts(2) ) - log10( co2pts(1) ) )
+      frac(2) = 0.0
+    end if
+    stringkey1 = string1co2 // string1tmp
+    stringkey2 = string2co2 // string2tmp
+  else
+    frac(1) = 0.0
+    frac(2) = abs( tg0 - tmppts(1) ) / abs( tmppts(2) - tmppts(1) )
+    stringkey1 = string1co2 // string1tmp
+    stringkey2 = string1co2 // string2tmp
+  end if
 
   if ( stringkey1 .eq. stringkey2 ) then
     call h_olr%uget_value( stringkey1, olr )   
@@ -158,21 +172,9 @@ subroutine getOLR( fco2, tg0, olr )
     if ( ( olrpts(1) .eq. -1.0 ) .or. ( olrpts(2) .eq. -1.0 ) ) then
       olr = 1.0
     else
-      if ( co2pts(1) .eq. co2pts(2) ) then
-        frac(1) = 0.0
-      else
-        frac(1) = abs( log10( fco2 ) - log10( co2pts(1) ) ) / abs( log10( co2pts(2) ) - log10( co2pts(1) ) )
-      end if
-      if ( tmppts(1) .eq. tmppts(2) ) then
-        frac(2) = 0.0
-      else
-        frac(2) = abs( tg0 - tmppts(1) ) / abs( tmppts(2) - tmppts(1) )
-      end if
-
-      !olr = olrpts(1) + maxval( frac ) * ( olrpts(2) - olrpts(1) )
-      olr = olrpts(1) + ( frac(2) ) * ( olrpts(2) - olrpts(1) )
+      olr = olrpts(1) + maxval( frac ) * ( olrpts(2) - olrpts(1) )
+      !olr = olrpts(1) + ( frac(2) ) * ( olrpts(2) - olrpts(1) )
       !olr = ( olrpts(2) + olrpts(1) ) / 2
-
     end if
   end if
 
@@ -196,12 +198,13 @@ subroutine getPALB( fco2, tg0, zy, surfalb, palb )
   real, dimension(ntmp)             :: tempdiff
   real, dimension(nzen)             :: zenidiff
   real, dimension(nsab)             :: albediff
-  real, dimension(2)                :: co2pts, tmppts, zenpts, albpts, palbpts
-  real, dimension(4)                :: frac
+  real, dimension(2)                :: co2pts, tmppts, zenpts, albpts
+  real, dimension(4)                :: frac, palbpts
   integer                           :: co2ind, tmpind, zenind, albind, nextind
+  real                              :: palb1, palb2
 
   character*10 :: string1co2, string2co2, string1tmp, string2tmp, string1zen, string2zen, string1alb, string2alb
-  character*40 :: stringkey1, stringkey2
+  character*40 :: stringkey1, stringkey2, stringkey3, stringkey4
 
   fco2diff = abs( fco2levels - fco2 ) / fco2
   tempdiff = abs( templevels - tg0 ) / tg0
@@ -292,42 +295,47 @@ subroutine getPALB( fco2, tg0, zy, surfalb, palb )
   write( string1alb, '(F3.1)' ) albelevels( albind )
   write( string2alb, '(F3.1)' ) albelevels( nextind )
 
-  stringkey1 = string1co2 // string1tmp // string1zen // string1alb
-  stringkey2 = string2co2 // string2tmp // string2zen // string2alb
-
-  if ( stringkey1 .eq. stringkey2 ) then
-    call h_alb%uget_value( stringkey1, palb )
-  else
-    call h_alb%uget_value( stringkey1, palbpts(1) )
-    call h_alb%uget_value( stringkey2, palbpts(2) )
-    if ( ( palbpts(1) .eq. -1.0 ) .or. ( palbpts(2) .eq. -1.0 ) ) then
-      palb = -1.0
+  if ( tmppts(1) .eq. tmppts(2) ) then
+    if ( co2pts(1) .eq. co2pts(2) ) then
+      frac(1) = 0.0
+      frac(2) = 0.0
     else
-      if ( co2pts(1) .eq. co2pts(2) ) then
-        frac(1) = 0.0
-      else
-        frac(1) = abs( log10( fco2 ) - log10( co2pts(1) ) ) / abs( log10( co2pts(2) ) - log10( co2pts(1) ) )
-      end if
-      if ( tmppts(1) .eq. tmppts(2) ) then
-        frac(2) = 0.0
-      else
-        frac(2) = abs( tg0 - tmppts(1) ) / abs( tmppts(2) - tmppts(1) )
-      end if
-      if ( zenpts(1) .eq. zenpts(2) ) then
-        frac(3) = 0.0
-      else
-        frac(3) = abs( zy - zenpts(1) ) / abs( zenpts(2) - zenpts(1) )
-      end if
-      if ( albpts(1) .eq. albpts(2) ) then
-        frac(4) = 0.0
-      else
-        frac(4) = abs( surfalb - albpts(1) ) / abs( albpts(2) - albpts(1) )
-      end if
-
-      palb = palbpts(1) + maxval( frac ) * ( palbpts(2) - palbpts(1) )
-      !palb = ( palbpts(2) + palbpts(1) ) / 2
-      !palb = palbpts(1) + ( frac(2) ) * ( palbpts(2) - palbpts(1) )
+      frac(1) = abs( log10( fco2 ) - log10( co2pts(1) ) ) / abs( log10( co2pts(2) ) - log10( co2pts(1) ) )
+      frac(2) = 0.0
     end if
+  else
+    frac(1) = 0.0
+    frac(2) = abs( tg0 - tmppts(1) ) / abs( tmppts(2) - tmppts(1) )
+    string2co2 = string1co2
+  end if
+  stringkey1 = string1co2 // string1tmp // string1zen // string1alb  
+  stringkey2 = string2co2 // string2tmp // string1zen // string1alb  
+
+  if ( zenpts(1) .eq. zenpts(2) ) then
+    frac(3) = 0.0
+  else
+    frac(1) = 0.0
+    frac(3) = abs( zy - zenpts(1) ) / abs( zenpts(2) - zenpts(1) )
+  end if
+  if ( albpts(1) .eq. albpts(2) ) then
+    frac(4) = 0.0
+  else
+    frac(1) = 0.0
+    frac(4) = abs( surfalb - albpts(1) ) / abs( albpts(2) - albpts(1) )
+  end if
+  stringkey3 = string1co2 // string1tmp // string2zen // string2alb  
+  stringkey4 = string2co2 // string2tmp // string2zen // string2alb  
+
+  call h_alb%uget_value( stringkey1, palbpts(1) )
+  call h_alb%uget_value( stringkey2, palbpts(2) )
+  call h_alb%uget_value( stringkey3, palbpts(3) )
+  call h_alb%uget_value( stringkey4, palbpts(4) )
+  if ( ( palbpts(1) .eq. -1.0 ) .or. ( palbpts(2) .eq. -1.0 ) .or. ( palbpts(3) .eq. -1.0 ) .or. ( palbpts(4) .eq. -1.0 ) ) then
+    palb = -1.0
+  else
+    palb1 = palbpts(1) + maxval( frac(:2) ) * ( palbpts(2) - palbpts(1) )
+    palb2 = palbpts(3) + maxval( frac(:2) ) * ( palbpts(4) - palbpts(3) )
+    palb  = palb1 + maxval( frac(3:) ) * abs( palb2 - palb1 ) 
   end if
 
   return

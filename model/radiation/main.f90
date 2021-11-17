@@ -33,10 +33,10 @@ do temp = tstart, tend, tstep
     tg0 = real( temp )
 
     call getOLR( fco2, tg0, olr )
-    print *, olr / 1000.
+    !print *, olr / 1000.
 
     call getPALB( fco2, tg0, zy, surfalb, palb )
-    !print *, palb
+    print *, palb
   
   end do
 
