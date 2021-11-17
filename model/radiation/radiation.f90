@@ -20,10 +20,10 @@ public :: radiation_init, radiation_end, getOLR, getPALB
   integer, parameter :: nsab = 5
 
 
-  !character*100 :: file_name = "./radiation/radiation_N2_CO2_Sun.h5"
+  character*100 :: file_name = "./radiation/radiation_N2_CO2_Sun.h5"
   !character*100 :: file_name = "./radiation/radiation_N2_CO2_2600K.h5"
   !character*100 :: file_name = "./radiation_N2_CO2_2600K.h5"   !uncomment for standalone test with main.f90
-  character*100 :: file_name = "./radiation_N2_CO2_Sun.h5"   !uncomment for standalone test with main.f90
+  !character*100 :: file_name = "./radiation_N2_CO2_Sun.h5"   !uncomment for standalone test with main.f90
   character*100 :: sds_olr   = "/olr"
   character*100 :: sds_alb   = "/palb"
   integer(HID_T):: file_id, olr_id, alb_id
