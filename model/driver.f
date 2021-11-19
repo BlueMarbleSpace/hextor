@@ -700,9 +700,9 @@ c  DIURNALLY-AVERAGED ZENITH ANGLE
          mu(k) = x(k)*sin(dec) + cos(asin(x(k)))*cos(dec)*sin(h)/h
       end if
 
-      if ( do_longitudinal ) then  
-        mu(k) = 1.0
-      end if
+      !if ( do_longitudinal ) then  
+      !  mu(k) = 1.0
+      !end if
 
       z = acos(mu(k))*180./pi
       zrad = acos(mu(k))
@@ -1217,28 +1217,34 @@ c----------------------------------------------------------------------c
 c  DIURNALLY-AVERAGED INSOLATION 
       
       if ( do_manualseasons ) then
-         q = solconD( daynum )
-         if ( k .eq. nbelts ) then
-           daynum = daynum + 1
-           if ( mod( ndays, nt ) .eq. 0 ) daynum = 1
-           !print *, "day = ", daynum
-         end if
+        q = solconD( daynum )
+        if ( k .eq. nbelts ) then
+          daynum = daynum + 1
+          if ( mod( ndays, nt ) .eq. 0 ) daynum = 1
+          !print *, "day = ", daynum
+        end if
       end if
 
       if ( do_longitudinal ) then
-         if ((x(k) .le. sin(pi/4)) .and. (x(k) .ge. sin(-pi/4))) then 
-           s(k) = (q/pi) * cos( 2*asin(x(k)) )
-         else
+        if ( x(k) .ge. 0.0 ) then
+          s(k) = (q/pi) * cos( x(k) )
+        else
            s(k) = 0.0
            ir(k) = ir(k) + cloudir
-         end if
+        end if 
+        !if ((x(k) .le. sin(pi/4)) .and. (x(k) .ge. sin(-pi/4))) then 
+        !  s(k) = (q/pi) * cos( 2*asin(x(k)) )
+        !else
+        !  s(k) = 0.0
+        !  ir(k) = ir(k) + cloudir
+        !end if
       else if (seasons) then
-         s(k) = (q/pi)*(x(k)*sin(dec)*h + 
+        s(k) = (q/pi)*(x(k)*sin(dec)*h + 
      &        cos(asin(x(k)))*cos(dec)*sin(h))
       else 
-          ! for mean annual use the second Legendre polynomial
-          p2   = (3*sin(lat(k))*sin(lat(k)) - 1) / 2
-          s(k) = (q/pi)*(1 - 0.5*p2)
+        ! for mean annual use the second Legendre polynomial
+        p2   = (3*sin(lat(k))*sin(lat(k)) - 1) / 2
+        s(k) = (q/pi)*(1 - 0.5*p2)
       end if
 
 c----------------------------------------------------------------------c
