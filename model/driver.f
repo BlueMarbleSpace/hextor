@@ -1233,8 +1233,6 @@ c  DIURNALLY-AVERAGED INSOLATION
            ir(k) = ir(k) + cloudir
         end if 
 
-        print *, k, x(k), s(k)
-
         !if ((x(k) .le. sin(pi/4)) .and. (x(k) .ge. sin(-pi/4))) then 
         !  s(k) = (q/pi) * cos( 2*asin(x(k)) )
         !else
