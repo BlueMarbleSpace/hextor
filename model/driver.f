@@ -1227,11 +1227,14 @@ c  DIURNALLY-AVERAGED INSOLATION
 
       if ( do_longitudinal ) then
         if ( x(k) .ge. 0.0 ) then
-          s(k) = (q/pi) * cos( x(k) )
+          s(k) = (q/pi) * x(k)
         else
            s(k) = 0.0
            ir(k) = ir(k) + cloudir
         end if 
+
+        print *, k, x(k), s(k)
+
         !if ((x(k) .le. sin(pi/4)) .and. (x(k) .ge. sin(-pi/4))) then 
         !  s(k) = (q/pi) * cos( 2*asin(x(k)) )
         !else
