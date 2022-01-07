@@ -1,0 +1,8 @@
+*.o
+*.mod
+*.out
+plots*
+model/driver
+model/input.nml
+model/data/restart.dat
+model/radiation/radtest
