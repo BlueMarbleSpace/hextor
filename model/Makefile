@@ -6,19 +6,17 @@
 FC 	= /sw/hdf5-1.8.18_icc-17/bin/h5fc
 #FC 	= /usr/bin/h5pfc
 #FC 	= /opt/intel/bin/ifort
-WDIR	= /usr/lusers/haqq/hextor/model
+WDIR	= /models/hextor/model
 #############################################
-
-# Flags for gfortran
-#FLAGS    = -fdefault-real-8 -Wall -frecursive -O3 -g
-#FLAGSFFH = -cpp -Wall -frecursive -O3 -g
 
 #Flags for ifort
 FLAGS	= -r8 -align all -warn nogeneral -O3 -g -parallel
 FLAGSFFH = -cpp -O3 -g
 
-#FLAGS	= -parallel -O2 -xHost -ipo -r8 -align all -i-static -warn nogeneral 
-#FLAGS	= -O3 -xHost -ipo -r8 -align all -i-static -warn nogeneral
+# Flags for gfortran
+#FLAGS    = -fdefault-real-8 -Wall -frecursive -O3 -g
+#FLAGSFFH = -cpp -Wall -frecursive -O3 -g
+
 TARGET	= driver
 OBJECTS = m_ffhash.o radiation.o driver.o
 
