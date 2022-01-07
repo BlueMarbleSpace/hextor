@@ -1,0 +1,58 @@
+ &ebm
+   seasons	= .true.,
+   do_manualseasons = .false.,
+   tempinit     = 288.0,
+   resfile      = 0,
+   tend		= 7.e11, 
+   dt		= 4.32e4,
+   rot		= 7.27e-5,
+   a		= 1.49597892E13,
+   ecc		= 0.0,
+   peri		= 0.0,
+   obl		= 45.0,
+   d0           = 0.38,
+   diffadj      = .true.,
+   pg0          = 1.0,
+   fco2         = 4.0e-4,
+   fh2          = 0.,
+   ocean	= 1.0,
+   igeog        = 4,
+   constheatcap = .true.,
+   heatcap      = 5.25e8,
+   yrstep       = 1,
+   msun         = 1.9891e33,
+   iterhalt     = .true.,
+   do_longitudinal = .false. /
+
+ &radiation
+   relsolcon	 = 1.0,
+   solarcon      = 1360,
+   radparam      = 3, 
+   groundalb	 = 0.30,
+   snowalb       = 0.663,
+   oceanalbconst = .true.,
+   ocnalb        = 0.30,
+   landsnowfrac  = 1.00, 
+   cloudir	 = -8.0, 
+   fcloud        = 0.0,
+   cloudalb      = .false.,
+   soladj        = .false.,
+   linalb        = .false.,
+   linrad        = .false. /
+
+ &co2cycle
+   do_cs_cycle  = .false.,
+   outgassing   = 7.0,
+   weathering   = 7.0,
+   betaexp      = 0.50,
+   kact         = 0.09,
+   krun         = 0.045 /
+
+ &h2cycle
+   do_h2_cycle  = .false.,
+   h2outgas     = 1.0e12 /
+
+ &stochastic
+   do_stochastic = .false.,
+   noisevar      = 0.334 /
+
