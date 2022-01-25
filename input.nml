@@ -18,10 +18,9 @@
    ocean	= 1.0,
    igeog        = 4,
    constheatcap = .true.,
-   heatcap      = 2.00e6
+   heatcap      = 2.00e6,
    yrstep       = 1,
    msun         = 1.9891e33,
-   linalb       = .false.,
    iterhalt     = .true.,
    do_longitudinal = .false. /
 
@@ -38,6 +37,7 @@
    fcloud        = 0.0,
    cloudalb      = .false.,
    soladj        = .false.,
+   linalb        = .false.,
    linrad        = .false. /
 
  &co2cycle
