@@ -1435,6 +1435,11 @@ c     !Carbonate-Silicate pCO2 update
 
           pg0 = pco2 + pn2
 
+        else if ( radparam .eq. 3 ) then
+
+          pg0  = pco2 + pn2
+          fco2 = pco2 / pg0
+
         else if ( radparam .eq. 4 ) then
 
           !H2 cycle: calculate new value of fh2
