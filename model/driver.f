@@ -1677,7 +1677,7 @@ c  torial supercontinent (4) 100% oceanic and (5) 100% land (10-27-95)
       real*4  lat,latangle
       logical coast
 
-      goto (10,20,30,40,50) igeog
+      goto (10,20,30,40,50,60) igeog
       
 c  PRESENT GEOGRAPHY from Sellers (1965)
  10   rewind(2)
@@ -1753,6 +1753,12 @@ c  100% LAND SURFACE***
  50   do 55 k = 1,nbelts,1
          focean(k) = 0.
  55   continue
+      return
+
+c  EQUAL LAND/OCEAN FRACTION AT ALL LATITUDE BANDS
+ 60   do 65 k = 1,nbelts,1
+         focean(k) = ocean
+ 65   continue
       return
 
       end
