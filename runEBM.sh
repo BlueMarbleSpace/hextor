@@ -8,7 +8,7 @@
 set wdir 	= /models/hextor
 
 # Update the symbolic link in the config folder to match your system configuration
-source $wdir/config/machine.symlink
+$wdir/config/machine.sh
 
 #---------------------------------------------------------------------------------------------------
 # Do not edit below this line
