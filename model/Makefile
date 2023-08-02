@@ -3,7 +3,7 @@
 #
 
 ### Edit FC and WDIR to match your system ###
-FC 	= /sw/hdf5-1.8.18_icc-17/bin/h5fc
+FC 	= h5fc
 #FC 	= /usr/bin/h5pfc
 #FC 	= /opt/intel/bin/ifort
 WDIR	= /models/hextor/model

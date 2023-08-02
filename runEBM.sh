@@ -1,13 +1,17 @@
 #!/bin/csh
-# Runscript for EBM (14 Feb 2014 JDH)
+# Runscript for EBM (02 August 2023 JHM)
 #---------------------------------------------------------------------------------------------------
 #set echo
 
 #---------------------------------------------------------------------------------------------------
 # Edit this value of wdir to match your system
-
 set wdir 	= /models/hextor
+
+# Update the symbolic link in the config folder to match your system configuration
+source $wdir/config/machine.symlink
+
 #---------------------------------------------------------------------------------------------------
+# Do not edit below this line
 
 set modeldir 	= $wdir/model
 set plotdir 	= $wdir/plots

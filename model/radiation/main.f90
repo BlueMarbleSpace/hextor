@@ -22,25 +22,28 @@ pco2levels = (/ 1.e-6,3.e-6,6.e-6,1.e-5, 3.e-5, 6.e-5,1.e-4, &
 
 call radiation_init
 
-do temp = tstart, tend, tstep
-  do i = 1, 28
+!do temp = tstart, tend, tstep
+!  do i = 1, 28
 
-    pco2 = pco2levels(i)
+!    pco2 = pco2levels(i)
 
-    ptot = pg0 + pco2
-    fco2 = pco2 / ptot
+!    ptot = pg0 + pco2
+!    fco2 = pco2 / ptot
 
-    tg0 = real( temp )
+!    tg0 = real( temp )
+
+    fco2 = 2.8e-2
+    tg0 = 288
 
     call getOLR( fco2, tg0, olr )
-    !print *, olr / 1000.
+    print *, olr / 1000.
 
     call getPALB( fco2, tg0, zy, surfalb, palb )
     print *, palb
   
-  end do
+!  end do
 
-end do
+!end do
 
 call radiation_end
 
