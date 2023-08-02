@@ -88,16 +88,19 @@ c      parameter (niter=300000)
      &  zntempsum(nbelts),zntempave(0:nbelts+1),zndecmax(nbelts),
      &  zndecmin(nbelts),obstemp(nbelts),iceline(0:5),fice(nbelts),
      &  wthrate(nbelts),warea(nbelts),imco2(nbelts), diff(nbelts),
-     &  stab(0:nbelts), znalbsum(nbelts), znalbave(nbelts)
+     &  stab(0:nbelts), znalbsum(nbelts), znalbave(nbelts),
+     &  znolrsum(nbelts), znolrave(nbelts)
 
       character  header*80,file(0:3)*8
       logical seasons, last, linrad, linalb, cloudalb
       logical do_stochastic, soladj, constheatcap, diffadj, iterhalt
       logical do_cs_cycle, do_h2_cycle, oceanalbconst 
       logical do_longitudinal, do_manualseasons
+      logical fillet
       real landsnowfrac, RAND, boxmuller, noisevar, heatcap, ocnalb
       real outgassing, weathering, betaexp, kact, krun, q0
       real pg0, ir2, fh2, co2sat, h2escape, ph2, ncolh2, h2outgas
+      real icelineN, icelineS
       integer yrcnt, yrstep, radparam, co2flag
       integer ISEED, resfile, nt, daynum
       integer*4 now(3)
@@ -205,6 +208,8 @@ c  INITIALIZE VARIABLES
       nt = 1          !counter for number of timesteps 
       daynum = 1          !counter for number of days per orbit
 
+      fillet = .true.
+
       CALL itime( now )
       CALL SRAND( now(3) )
 
@@ -231,6 +236,10 @@ c  OPEN FILES
       open (unit=20,file='out/dailytempseries.out',status='unknown')   
       open (unit=98,file='data/Altair_inc90_a3.3.txt',status='old')
       open (unit=99,file='data/insolaout.dat',status='old')
+      if ( fillet ) then
+        open (unit=50,file='out/fillet.out',status='unknown')
+        open (unit=51,file='out/fillet_global.out',status='unknown')
+      end if
 
 c  WRITE OBLIQUITY TO OUTPUT
       write(15,2) 'OBLIQUITY: ', obl, ' degrees'
@@ -1312,6 +1321,7 @@ c  ZONAL STATISTICS - if last loop
       if (zntempmax(k).eq.temp(k)) zndecmax(k) = decangle
       zntempsum(k) = zntempsum(k) + temp(k)
       znalbsum(k)  = znalbsum(k) + atoa(k)
+      znolrsum(k)  = znolrsum(k) + ir(k)
 
  310  continue                                     !**end of belt loop
 
@@ -1483,6 +1493,7 @@ c ZONAL SEASONAL AVERAGES
       do 732 k = 1, nbelts, 1
          zntempave(k) = zntempsum(k) / nstep
          znalbave(k) = znalbsum(k) / nstep
+         znolrave(k) = znolrsum(k) / nstep
          if ( k .le. nbelts/2 ) then
            shtempave = shtempave + zntempave(k)
          else
@@ -1516,6 +1527,11 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
  752     format(4x,f4.0,4x,4(3x,f8.3))
          write(6,753) zntempave(k)
  753     format(2x,f8.3)
+         if ( fillet ) then
+           write(50,754) latangle(k), zntempave(k), znalbave(k), 
+     &         znalbave(k), znolrave(k)
+ 754       format(f5.1,1x,f6.2,1x,f4.2,1x,f4.2,1x,f6.2)
+         end if
  750  continue
       
  755  format(/ 'SURFACE DATA')
@@ -1524,26 +1540,38 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
        write(15,760)
  760  format(/ 'ICE LINES (Tave = 263K)')
       if((nedge.eq.0).and.(zntempave(nbelts/2).le.263.)) then
+        icelineN = 0.0
+        icelineS = 0.0
       	write(15,*) '  planet is an ice-ball.' 
-        write(19,766) relsolcon, 0.0, 0.0
       else if((nedge.eq.0).and.(zntempave(nbelts/2).gt.263.)) then
+        icelineN = 90.0
+        icelineS = -90.0
         write(15,*) '  planet is ice-free.'
-        write(19,766) relsolcon, -90.0, 90.0
       else
         do 765 k=1,nedge,1
            write(15,762) iceline(k)
  762       format(2x,'ice-line latitude = ',f5.1,' degrees.')
  765    continue
         if((nedge.eq.2)) then
-           write(19,766) relsolcon, iceline(1), iceline(2)
+           icelineN = iceline(2)
+           icelineS = iceline(1)
         else
           if(iceline(1) .gt. 0.0) then
-             write(19,766) relsolcon, -90.0, iceline(1)
+             icelineN = iceline(1)
+             icelineS = -90.0
           else
-             write(19,766) relsolcon, iceline(1), 90.0
+             icelineN = 90.0
+             icelineS = iceline(1)
           end if
         end if
- 766    format(f5.3,2x,f8.3,2x,f8.3)
+      end if
+      write(19,766) relsolcon, icelineS, icelineN
+ 766  format(f5.3,2x,f8.3,2x,f8.3)
+
+      if ( fillet ) then
+        write(51,768) 0, solarcon/1361.0, obl, INT(fco2*1.e6), 
+     &                   ann_tempave, abs(icelineN), abs(icelineS)
+ 768    format(i1,1x,f4.2,1x,f4.1,1x,i3,1x,f6.2,1x,f4.1,1x,f4.1)
       end if
 
 c  CO2 CLOUDS
@@ -1650,6 +1678,13 @@ c
  1135 format(1x,'latitude(deg)',2x,'ave temp(K)',2x,'min temp(K)',
      &  2x,'@dec(deg)',2x,'max temp(K)',2x,'@dec(deg)',2x,
      &  'planet albe')
+
+      if ( fillet ) then
+        write(50,1137)
+ 1137   format(/ '# Lat Tsurf Asurf ATOA OLR')
+        write(51,1138)
+ 1138   format(/ '# Case Inst Obl XCO2 Tglob IceLineN IceLineS')
+      end if
 
  1100 format(/ 'OUTPUT FILES')
       tcalc = 0.
