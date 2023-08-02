@@ -89,7 +89,8 @@ c      parameter (niter=300000)
      &  zndecmin(nbelts),obstemp(nbelts),iceline(0:5),fice(nbelts),
      &  wthrate(nbelts),warea(nbelts),imco2(nbelts), diff(nbelts),
      &  stab(0:nbelts), znalbsum(nbelts), znalbave(nbelts),
-     &  znolrsum(nbelts), znolrave(nbelts)
+     &  znolrsum(nbelts), znolrave(nbelts), 
+     &  znsurfalbsum(nbelts), znsurfalbave(nbelts)
 
       character  header*80,file(0:3)*8
       logical seasons, last, linrad, linalb, cloudalb
@@ -1322,6 +1323,7 @@ c  ZONAL STATISTICS - if last loop
       zntempsum(k) = zntempsum(k) + temp(k)
       znalbsum(k)  = znalbsum(k) + atoa(k)
       znolrsum(k)  = znolrsum(k) + ir(k)
+      znsurfalbsum(k) = znsurfalbsum(k) + surfalb(k)
 
  310  continue                                     !**end of belt loop
 
@@ -1494,6 +1496,7 @@ c ZONAL SEASONAL AVERAGES
          zntempave(k) = zntempsum(k) / nstep
          znalbave(k) = znalbsum(k) / nstep
          znolrave(k) = znolrsum(k) / nstep
+         znsurfalbave(k) = znsurfalbsum(k) / nstep
          if ( k .le. nbelts/2 ) then
            shtempave = shtempave + zntempave(k)
          else
@@ -1528,7 +1531,7 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
          write(6,753) zntempave(k)
  753     format(2x,f8.3)
          if ( fillet ) then
-           write(50,754) latangle(k), zntempave(k), znalbave(k), 
+           write(50,754) latangle(k), zntempave(k), znsurfalbave(k), 
      &         znalbave(k), znolrave(k)
  754       format(f5.1,1x,f6.2,1x,f4.2,1x,f4.2,1x,f6.2)
          end if
