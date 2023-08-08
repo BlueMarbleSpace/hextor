@@ -102,6 +102,7 @@ c      parameter (niter=300000)
       real outgassing, weathering, betaexp, kact, krun, q0
       real pg0, ir2, fh2, co2sat, h2escape, ph2, ncolh2, h2outgas
       real icelineN, icelineS
+      real cl, cw, ci
       integer yrcnt, yrstep, radparam, co2flag
       integer ISEED, resfile, nt, daynum
       integer*4 now(3)
@@ -119,7 +120,8 @@ c      parameter (niter=300000)
      &               obl, ocean, igeog, yrstep, resfile, d0,
      &               constheatcap, heatcap, diffadj,
      &               iterhalt, fco2, fh2, pg0, tempinit, msun,
-     &               do_longitudinal, do_manualseasons
+     &               do_longitudinal, do_manualseasons,
+     &               cl, cw, ci
 
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
@@ -160,7 +162,7 @@ c  INITIALIZE VARIABLES
       pco2 = pco20              !initial co2 concentration for this run (bars)
       ocean = 0.7      !planet fraction covered by water
       igeog = 1        !geography ('1'=present,'2'=polar,'3'=equatorial,
-     &                 ! '4'=100% water,'5'=100% land)
+     &                 ! '4'=100% water,'5'=100% land, '6'=equal lat frac)
       groundalb = 0.20  !base land surface albedo
       !groundalb = 0.25
       relsolcon = 1.0  !relative solar constant (1.0 for present Earth) 
@@ -168,6 +170,7 @@ c  INITIALIZE VARIABLES
       beta = 0.65      !beta
       cw = 2.1e8       !heat capacity over ocean
       cl = 5.25e6      !heat capacity over land
+      ci = 1.05e7      !heat capacity over lice
       d0 = 0.58        !thermal diffusion coefficient
       v = 3.3e14  !volcanic outgassing (g/year) [from Holland (1978)]
       wco2 = 9.49e14  !carbonate-silicate weathering constant
@@ -763,7 +766,6 @@ c LAND WITH STABLE SNOW COVER; SEA-ICE WITH SNOW COVER
  420  landalb = snowalb*landsnowfrac + groundalb*(1 - landsnowfrac)
       icealb = snowalb
 
-      ci = 1.05e7
       c(k) = (1-fice(k))*focean(k)*cw + fice(k)*focean(k)*ci + 
      &  (1 - focean(k))*cl
       fwthr = 0.

@@ -1,0 +1,16 @@
+# Use this header for notes about experiment set up
+# Compile all cases into a list
+
+# Name of benchmark/experiment:
+# Describe how ice line latitude is determined: 
+
+# Columns of data
+# Case = case number (0 -> total number of cases in experiment)
+# Inst = instellation (S_earth; i.e., relative to Earth's 1361 W m^-2)
+# Obl = obliquity (degrees)
+# XCO2 = mixing ratio (volume) of CO2 (ppm)
+# Tglob = global, annual mean surface temperature (K)
+# IceLineN = latitude of ice line in northern hemisphere (deg)
+# IceLineS = latitude of ice line in southern hemisphere (deg)
+
+# Case Inst Obl XCO2 Tglob IceLineN IceLineS

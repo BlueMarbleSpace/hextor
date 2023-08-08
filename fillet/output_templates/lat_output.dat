@@ -1,0 +1,15 @@
+# Use this header for notes and global details
+# Name of benchmark/experiment:
+# Case number:
+# Instellation (S_earth):
+# XCO2 (ppm):
+# Obliquity (degrees):
+
+# Columns of data (annually averaged for last orbit)
+# Lat = latitude (degrees)
+# Tsurf = annually averaged surface temperature (K)
+# Asurf = annually averaged surface albedo
+# ATOA = annually averaged top-of-atmosphere/total/planetary albedo
+# OLR = annually averaged outgoing longwave radiation (W m^-2)
+
+# Lat Tsurf Asurf ATOA OLR
