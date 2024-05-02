@@ -102,6 +102,7 @@ c      parameter (niter=300000)
       real outgassing, weathering, betaexp, kact, krun, q0
       real pg0, ir2, fh2, co2sat, h2escape, ph2, ncolh2, h2outgas
       real icelineN, icelineS
+      real icelineNMax, icelineNMin, icelineSMax, icelineSMin
       real cl, cw, ci
       integer yrcnt, yrstep, radparam, co2flag
       integer ISEED, resfile, nt, daynum
@@ -1547,10 +1548,18 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
       if((nedge.eq.0).and.(zntempave(nbelts/2).le.263.)) then
         icelineN = 0.0
         icelineS = 0.0
+        icelineNMax = 90.0
+        icelineNMin = 0.0
+        icelineSMax = 0.0
+        icelineSMin = -90.0
       	write(15,*) '  planet is an ice-ball.' 
       else if((nedge.eq.0).and.(zntempave(nbelts/2).gt.263.)) then
         icelineN = 90.0
         icelineS = -90.0
+        icelineNMax = 90.0
+        icelineNMin = 90.0
+        icelineSMax = -90.0
+        icelineSMin = -90.0
         write(15,*) '  planet is ice-free.'
       else
         do 765 k=1,nedge,1
@@ -1560,13 +1569,25 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
         if((nedge.eq.2)) then
            icelineN = iceline(2)
            icelineS = iceline(1)
+           icelineNMax = 90.0
+           icelineNMin = iceline(2)
+           icelineSMax = iceline(1)
+           icelineSMin = -90.0
         else
           if(iceline(1) .gt. 0.0) then
              icelineN = iceline(1)
              icelineS = -90.0
+             icelineNMax = 90.0
+             icelineNMin = iceline(1)
+             icelineSMax = -0.0
+             icelineSMin = -90.0
           else
              icelineN = 90.0
              icelineS = iceline(1)
+             icelineNMax = 90.0
+             icelineNMin = 90.0
+             icelineSMax = iceline(1)
+             icelineSMin = -90.0
           end if
         end if
       end if
@@ -1575,8 +1596,10 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
 
       if ( fillet ) then
         write(51,768) 0, solarcon/1361.0, obl, INT(fco2*1.e6), 
-     &                   ann_tempave, abs(icelineN), abs(icelineS)
- 768    format(i1,1x,f4.2,1x,f4.1,1x,i3,1x,f6.2,1x,f4.1,1x,f4.1)
+     &                   ann_tempave, icelineNMax, icelineNMin, 
+     &                   icelineSMax, icelineSMin, d0, ann_irave
+ 768    format(i1,1x,f4.2,1x,f4.1,1x,i3,1x,f6.2,1x,f4.1,1x,f4.1,
+     &         1x,f6.1,1x,f6.2,1x,f4.2,1x,f6.2)
       end if
 
 c  CO2 CLOUDS

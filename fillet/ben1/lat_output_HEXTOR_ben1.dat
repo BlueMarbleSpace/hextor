@@ -1,16 +1,3 @@
-# FILLET Ben1 with HEXTOR - identical configuration as present-day Earth from Haqq-Misra and Hayworth (2022) but with 280ppm CO2 (previously 400ppm) and cloudir = -6.3 (previously -8.0)
-# Name of benchmark/experiment: Benchmark 1
-# Case number: 0
-# Instellation (S_earth): 1
-# XCO2 (ppm): 280
-# Obliquity (degrees): 23.5
-
-# Columns of data (annually averaged for last orbit)
-# Lat = latitude (degrees)
-# Tsurf = annually averaged surface temperature (K)
-# Asurf = annually averaged surface albedo
-# ATOA = annually averaged top-of-atmosphere/total/planetary albedo
-# OLR = annually averaged outgoing longwave radiation (W m^-2)
 
 # Lat Tsurf Asurf ATOA OLR
 -85.0 254.76 0.66 0.60 189.52

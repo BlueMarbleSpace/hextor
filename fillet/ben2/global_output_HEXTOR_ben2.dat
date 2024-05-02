@@ -1,17 +1,3 @@
-# FILLET Ben2 with HEXTOR - using cloudir = -6.3 to stay consistent with Ben1
-# Compile all cases into a list
-
-# Name of benchmark/experiment: Benchmark 2
-# Describe how ice line latitude is determined: ice line occurs if zonal average temperature is less than or equal to 263
-
-# Columns of data
-# Case = case number (0 -> total number of cases in experiment)
-# Inst = instellation (S_earth; i.e., relative to Earth's 1361 W m^-2)
-# Obl = obliquity (degrees)
-# XCO2 = mixing ratio (volume) of CO2 (ppm)
-# Tglob = global, annual mean surface temperature (K)
-# IceLineN = latitude of ice line in northern hemisphere (deg)
-# IceLineS = latitude of ice line in southern hemisphere (deg)
 
 # Case Inst Obl XCO2 Tglob IceLineN IceLineS
-0 1.00 23.5 280 287.15 70.1 70.1
+0 1.00 23.5 280 287.15 90.0 70.1  -70.1 -90.00 0.50 261.43
