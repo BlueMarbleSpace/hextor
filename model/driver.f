@@ -1567,12 +1567,21 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
  762       format(2x,'ice-line latitude = ',f5.1,' degrees.')
  765    continue
         if((nedge.eq.2)) then
-           icelineN = iceline(2)
-           icelineS = iceline(1)
-           icelineNMax = 90.0
-           icelineNMin = iceline(2)
-           icelineSMax = iceline(1)
-           icelineSMin = -90.0
+          if(zntempave(nbelts).le.263) then
+            icelineN = iceline(2)
+            icelineS = iceline(1)
+            icelineNMax = 90.0
+            icelineNMin = iceline(2)
+            icelineSMax = iceline(1)
+            icelineSMin = -90.0
+          else
+            icelineN = iceline(2)
+            icelineS = iceline(1)
+            icelineNMax = iceline(2)
+            icelineNMin = 0.0
+            icelineSMax = 0.0
+            icelineSMin = iceline(1)
+          end if
         else
           if(iceline(1) .gt. 0.0) then
              icelineN = iceline(1)
