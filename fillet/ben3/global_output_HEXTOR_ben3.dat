@@ -1,3 +1,29 @@
+# FILLET Ben3 with HEXTOR - using cloudir = -6.3 to stay consistent with Ben1
+# Compile all cases into a list
 
-# Case Inst Obl XCO2 Tglob IceLineN IceLineS
+# Name of benchmark/experiment: Benchmark 3
+# Describe how ice line latitude is determined: ice line occurs if zonal average temperature is less than or equal to 263
+
+# Columns of data
+# Case = case number (0 -> total number of cases in experiment)
+# Inst = instellation (S_earth; i.e., relative to Earth's 1361 W m^-2)
+# Obl = obliquity (degrees)
+# XCO2 = mixing ratio (volume) of CO2 (ppm)
+# Tglob = global, annual mean surface temperature (K)
+# IceLineNMax = latitude of northern edge of ice in northern hemisphere (deg)
+# IceLineNMin = latitude of southern edge of ice in northern hemisphere (deg)
+# IceLineSMax = latitude of northern edge of ice in southern hemisphere (deg)
+# IceLineSMin = latitude of southern edge of ice in southern hemisphere (deg)
+# Diff = diffusion coefficient
+# OLR = global, annual mean outgoing longwave radiation
+
+# Examples for IceLine max and min:
+# Polar caps: IceLineNMax = 90, IceLineNMin = 60, IceLineSMax = -60, IceLineSMin = -90
+# Snowball state: IceLineNMax = 90, IceLineNMin = 0, IceLineSMax = 0, IceLineSMin = -90
+# Ice free state: IceLineNMax = 90, IceLineNMin = 90, IceLineSMax = -90, IceLineSMin = -90
+# Ice belt: IceLineNMax = 30, IceLineNMin = 0, IceLineSMax = 0, IceLineSMin = -30
+# Note ice belt doesn't really have "edges" at 0 deg, but record as 0 anyway to
+# keep the columns the same length
+
+# Case Inst Obl XCO2 Tglob IceLineNMax IceLineNMin IceLineSMax IceLineSMin Diff OLRglob
 0 1.00 60.0 280 288.89 90.0 90.0  -90.0 -90.00 0.50 265.48
