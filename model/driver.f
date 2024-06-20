@@ -1720,8 +1720,8 @@ c
         write(50,1137)
  1137   format(/ '# Lat Tsurf Asurf ATOA OLR')
         write(51,1138)
- 1138   format(/ '# Case Inst Obl XCO2 Tglob IceLineNMax 
-     &          IceLineNMin IceLineSMax IceLineSMin Diff OLRglob')
+ 1138   format(/ '# Case Inst Obl XCO2 Tglob IceLineNMax IceLineNMin 
+     &IceLineSMax IceLineSMin Diff OLRglob')
       end if
 
  1100 format(/ 'OUTPUT FILES')
