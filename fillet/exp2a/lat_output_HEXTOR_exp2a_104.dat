@@ -1,0 +1,33 @@
+# FILLET Exp2a with HEXTOR - using cloudir = -6.3 to stay consistent with Ben2 and Ben3
+# Name of benchmark/experiment: Experiment 2a
+# Case number: 104
+# Instellation (S_earth): 1.052
+# XCO2 (ppm): 280
+# Obliquity (degrees): 40.0
+
+# Columns of data (annually averaged for last orbit)
+# Lat = latitude (degrees)
+# Tsurf = annually averaged surface temperature (K)
+# Asurf = annually averaged surface albedo
+# ATOA = annually averaged top-of-atmosphere/total/planetary albedo
+# OLR = annually averaged outgoing longwave radiation (W m^-2)
+
+# Lat Tsurf Asurf ATOA OLR
+-85.0 238.98 0.49 0.48 162.94
+-75.0 238.94 0.50 0.48 162.44
+-65.0 238.85 0.51 0.49 161.29
+-55.0 238.73 0.53 0.52 160.15
+-45.0 238.51 0.55 0.55 158.68
+-35.0 238.24 0.60 0.61 157.05
+-25.0 238.56 0.60 0.61 156.88
+-15.0 239.08 0.60 0.60 157.33
+ -5.0 239.47 0.60 0.59 157.78
+  5.0 239.48 0.60 0.59 157.79
+ 15.0 239.10 0.60 0.60 157.37
+ 25.0 238.60 0.60 0.61 156.94
+ 35.0 238.29 0.60 0.60 157.15
+ 45.0 238.60 0.55 0.55 158.83
+ 55.0 238.84 0.53 0.52 160.36
+ 65.0 238.99 0.51 0.49 161.54
+ 75.0 239.05 0.50 0.48 162.60
+ 85.0 239.07 0.49 0.48 163.07
