@@ -1,5 +1,5 @@
 #!/bin/csh
-# Calculate FILLET Experiment 2 cases with HEXTOR (20 June 2024 JDH)
+# Calculate FILLET Experiment 2 cases with HEXTOR (21 June 2024 JDH)
 #---------------------------------------------------------------------------------------------------
 #set echo
 
@@ -13,8 +13,8 @@ set outglobal	= $outdir/fillet_global.out
 set filletout   = $filletdir/global_output_HEXTOR_${expname}.dat
 set namelist    = input.nml
 set namelistB   = $filletdir/input.nml.${expname}
-set solmin      = 0.8
-set solmax      = 1.25
+set solmin      = 1.05
+set solmax      = 1.5
 set solint      = 0.025
 set oblmin      = 0.0
 set oblmax      = 90.0

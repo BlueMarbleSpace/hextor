@@ -26,4 +26,4 @@
 # keep the columns the same length
 
 # Case Inst Obl XCO2 Tglob IceLineNMax IceLineNMin IceLineSMax IceLineSMin Diff OLRglob
-0 1.00 23.5    280 288.03 90.0 57.2  -66.6 -90.00 0.38 263.86
+0 1.00 23.5    280.0 288.03 90.0 57.2  -66.6 -90.00 0.38 263.86
