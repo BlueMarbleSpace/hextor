@@ -107,7 +107,7 @@ c      parameter (niter=300000)
       integer yrcnt, yrstep, radparam, co2flag
       integer ISEED, resfile, nt, daynum
       integer*4 now(3)
-      real total, snowalb, tempinit, solarcon, fco2
+      real total, snowalb, tempinit, solarcon, fco2, icetemp
       dimension solcon(niter),prec(niter),ecce(niter),
      &  yrlabel(niter),obliq(niter)
       dimension solconD(ndays),precD(ndays),ecceD(ndays),
@@ -734,7 +734,7 @@ c  HEAT CAPACITY and SURFACE ALBEDO
       ! occur for 263 < T < 273.  (JDH)
       if (temp(k).ge.273.15) then
          fice(k) = 0
-      else if (temp(k).lt.263.15) then
+      else if (temp(k).lt.icetemp) then
          fice(k) = 1
       else
          fice(k) = 1. - exp((temp(k)-273.15)/10.)
@@ -1511,12 +1511,12 @@ c ZONAL SEASONAL AVERAGES
       print *, "SH/NH temperature difference = ", shtempave - nhtempave
       zntempave(nbelts+1) = zntempave(nbelts)  !**for ice-line calculation
 
-c  FIND ICE-LINES (ANNUAL-AVERAGE TEMP < 263.15K)
+c  FIND ICE-LINES (ANNUAL-AVERAGE TEMP < icetemp [=263.15K])
       nedge = 0
       do 740 k=1,nbelts,1
-      if ((zntempave(k+1)-263.15)*(zntempave(k)-263.15) .lt. 0.) then
+      if ((zntempave(k+1)-icetemp)*(zntempave(k)-icetemp) .lt. 0.) then
          icelat = latangle(k) + ((latangle(k+1)-latangle(k))/
-     &   (zntempave(k+1)-zntempave(k)))*(263.15-zntempave(k))
+     &   (zntempave(k+1)-zntempave(k)))*(icetemp-zntempave(k))
          nedge = nedge + 1
          iceline(nedge) = icelat
       end if
@@ -1544,8 +1544,8 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
  756  format(2x,'latitude(deg)',2x,'temp(k)',2x,'belt area',
      &  2x,'weathering area',2x,'zonal weathering rate (g/yr)')
        write(15,760)
- 760  format(/ 'ICE LINES (Tave = 263K)')
-      if((nedge.eq.0).and.(zntempave(nbelts/2).le.263.)) then
+ 760  format(/ 'ICE LINES (Tave = icetemp = 263.15K)')
+      if((nedge.eq.0).and.(zntempave(nbelts/2).le.icetemp)) then
         icelineN = 0.0
         icelineS = 0.0
         icelineNMax = 90.0
@@ -1553,7 +1553,7 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
         icelineSMax = 0.0
         icelineSMin = -90.0
       	write(15,*) '  planet is an ice-ball.' 
-      else if((nedge.eq.0).and.(zntempave(nbelts/2).gt.263.)) then
+      else if((nedge.eq.0).and.(zntempave(nbelts/2).gt.icetemp)) then
         icelineN = 90.0
         icelineS = -90.0
         icelineNMax = 90.0
@@ -1567,7 +1567,7 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
  762       format(2x,'ice-line latitude = ',f5.1,' degrees.')
  765    continue
         if((nedge.eq.2)) then
-          if(zntempave(nbelts).le.263) then
+          if(zntempave(nbelts).le.icetemp) then
             icelineN = iceline(2)
             icelineS = iceline(1)
             icelineNMax = 90.0
