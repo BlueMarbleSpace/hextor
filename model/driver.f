@@ -1606,10 +1606,10 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
 
       if ( fillet ) then
         write(51,768) 0, relsolcon*solarcon/1361.0, obl, 
-     &                   INT(fco2*1.e6), 
+     &                   fco2*1.e6, 
      &                   ann_tempave, icelineNMax, icelineNMin, 
      &                   icelineSMax, icelineSMin, d0, ann_irave
- 768    format(i1,1x,f4.2,1x,f4.1,1x,i6,1x,f6.2,1x,f4.1,1x,f4.1,
+ 768    format(i1,1x,f4.2,1x,f4.1,1x,f8.1,1x,f6.2,1x,f4.1,1x,f4.1,
      &         1x,f6.1,1x,f6.2,1x,f4.2,1x,f6.2)
       end if
 
