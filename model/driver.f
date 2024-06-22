@@ -212,6 +212,7 @@ c  INITIALIZE VARIABLES
       do_longitudinal = .false.
       nt = 1          !counter for number of timesteps 
       daynum = 1          !counter for number of days per orbit
+      icetemp = 263.15    !threshold for iceline
 
       fillet = .true.
 
@@ -1544,7 +1545,7 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
  756  format(2x,'latitude(deg)',2x,'temp(k)',2x,'belt area',
      &  2x,'weathering area',2x,'zonal weathering rate (g/yr)')
        write(15,760)
- 760  format(/ 'ICE LINES (Tave = icetemp = 263.15K)')
+ 760  format(/ 'ICE LINES (Tave = 263.15K)')
       if((nedge.eq.0).and.(zntempave(nbelts/2).le.icetemp)) then
         icelineN = 0.0
         icelineS = 0.0
