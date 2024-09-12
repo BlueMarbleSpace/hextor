@@ -69,8 +69,12 @@ c----------------------------------------------------------------------c
       parameter (mp=1.67e-24,cnvg=1.e-1)
       parameter (sbc=5.67e-8,emis=0.64)
       parameter (twopi=2*pi)
-c      parameter (niter=1)
-c      parameter (niter=300000)
+      !parameter (niter=1)
+      !parameter (niter=300000)
+      !parameter (niter=4570)  ! for do_gough and yrstep = 1.e6
+      !parameter (niter=45700)  ! for do_gough and yrstep = 1.e5
+      !parameter (niter=91400)  ! for do_gough and yrstep = 5.e4
+      !parameter (niter=457000)  ! for do_gough and yrstep = 1.e4
       parameter (niter=50)
       parameter (niterhalf=1001)
       parameter (niterquarter=1501)
@@ -96,7 +100,7 @@ c      parameter (niter=300000)
       logical seasons, last, linrad, linalb, cloudalb
       logical do_stochastic, soladj, constheatcap, diffadj, iterhalt
       logical do_cs_cycle, do_h2_cycle, oceanalbconst 
-      logical do_longitudinal, do_manualseasons
+      logical do_longitudinal, do_manualseasons, do_gough, do_marshist
       logical fillet
       real landsnowfrac, RAND, boxmuller, noisevar, heatcap, ocnalb
       real outgassing, weathering, betaexp, kact, krun, q0
@@ -126,7 +130,8 @@ c      parameter (niter=300000)
 
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
-     &               linrad, linalb, solarcon, oceanalbconst, ocnalb
+     &               linrad, linalb, solarcon, oceanalbconst, ocnalb,
+     &               do_gough
 
       NAMELIST /co2cycle/ do_cs_cycle, outgassing, weathering,
      &               betaexp, kact, krun
@@ -147,6 +152,7 @@ c  INITIALIZE VARIABLES
       last = .false.       !should always be .false.
       do_stochastic = .false. !if .true. then include stochastic perturbation
       soladj = .false.     !if .true. then include solar forcing adjustment
+      do_gough = .false.    !if .true. then use Gough (1981) solar forcing
       resfile = 0          !start from previous (1), present Earth (2) hothouse (3), large ice (4)
       q0 = 1360.           !solar constant
       tend = 7.e11          !calculation length (sec)
@@ -214,7 +220,8 @@ c  INITIALIZE VARIABLES
       daynum = 1          !counter for number of days per orbit
       icetemp = 263.15    !threshold for iceline
 
-      fillet = .true.
+      fillet = .false.
+      do_marshist = .false.
 
       CALL itime( now )
       CALL SRAND( now(3) )
@@ -359,6 +366,21 @@ c  SET SOLAR CONSTANT, ECCENTRICITY, AND OBLIQUITY
            read(99,*) yrlabel(p),ecce(p),prec(p),obliq(p),solcon(p)
            solcon(p) = 4*solcon(p) * relsolcon    !for insolaout.dat
            prec(p)   = ASIN(prec(p)/ecce(p))*180/pi
+        end do
+      else if ( do_gough ) then
+        do p = 1, niter, 1
+          solcon(p) = relsolcon *
+     &                  q0/(1 + 0.4*(1 - (p*yrstep/1.e9/4.57)))
+          ecce(p)   = ecc
+          prec(p)   = peri
+          if ( do_marshist ) then ! do_oblvar
+            !obliq(p)  = 25*sin(pi*p*yrstep/1.e6/250.) + 25.
+            !obliq(p)  = 25*sin(pi*p*yrstep/1.e6/500.) + 25.
+            !obliq(p)  = 25*sin(pi*p*yrstep/1.e6/400.) + 25.
+            obliq(p)  = 25*sin(pi*p*yrstep/1.e6/450.) + 25.
+          else
+            obliq(p)  = obl
+          end if
         end do
       else
         do p = 1, niter, 1
