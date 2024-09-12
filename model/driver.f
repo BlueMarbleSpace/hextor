@@ -101,7 +101,7 @@ c----------------------------------------------------------------------c
       logical do_stochastic, soladj, constheatcap, diffadj, iterhalt
       logical do_cs_cycle, do_h2_cycle, oceanalbconst 
       logical do_longitudinal, do_manualseasons, do_gough, do_marshist
-      logical fillet
+      logical fillet, do_dailyoutput
       real landsnowfrac, RAND, boxmuller, noisevar, heatcap, ocnalb
       real outgassing, weathering, betaexp, kact, krun, q0
       real pg0, ir2, fh2, co2sat, h2escape, ph2, ncolh2, h2outgas
@@ -126,7 +126,7 @@ c----------------------------------------------------------------------c
      &               constheatcap, heatcap, diffadj,
      &               iterhalt, fco2, fh2, pg0, tempinit, msun,
      &               do_longitudinal, do_manualseasons,
-     &               cl, cw, ci
+     &               cl, cw, ci, do_dailyoutput
 
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
@@ -220,6 +220,7 @@ c  INITIALIZE VARIABLES
       daynum = 1          !counter for number of days per orbit
       icetemp = 263.15    !threshold for iceline
 
+      do_dailyoutput = .false.
       fillet = .false.
       do_marshist = .false.
 
@@ -1358,7 +1359,8 @@ c  **set pole temps equal to adjacent belt temps
       temp(0) = temp(1)
       temp(nbelts+1) = temp(nbelts)
 
-      ! daily output could get large--comment this block if needed for long integrations
+      ! daily output could get large, set do_dailyoutput = .false. for long integrations
+      if ( do_dailyoutput ) then
       if( .not. last) then
         write(20,609) t/dt+366*yrcnt,q,temp(1),temp(5),temp(9),pg0,
      &    pco2,fh2,co2flag,d
@@ -1369,6 +1371,7 @@ c  **set pole temps equal to adjacent belt temps
         !write(20,609) t/dt+366*yrcnt,tempsum,pg0,pco2,co2flag,fh2,d
 ! 609    format(2x,f12.2,2x,f8.3,2x,e12.3,2x,e12.6,2x,i12,
 !     &    2x,f8.5,2x,f8.5)
+      end if
       end if
 
 
