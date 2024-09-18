@@ -71,13 +71,17 @@ c----------------------------------------------------------------------c
       parameter (twopi=2*pi)
       !parameter (niter=1)
       !parameter (niter=300000)
-      parameter (niter=1200)  ! for do_gough and yrstep = 1.e6 (future Earth to 1.2 Gyr from present)
-      !parameter (niter=120)  ! for do_gough and yrstep = 1.e7 (future Earth to 1.2 Gyr from present)
-      !parameter (niter=4570)  ! for do_gough and yrstep = 1.e6 (Mars)
-      !parameter (niter=45700)  ! for do_gough and yrstep = 1.e5 (Mars)
-      !parameter (niter=91400)  ! for do_gough and yrstep = 5.e4 (Mars)
-      !parameter (niter=457000)  ! for do_gough and yrstep = 1.e4 (Mars)
-      !parameter (niter=50)
+      !parameter (niter=1200000)  ! for do_futuresol and yrstep = 1.e3 (future Earth to 1.2 Gyr from present)
+      !parameter (niter=120000)  ! for do_futuresol and yrstep = 1.e4 (future Earth to 1.2 Gyr from present)
+      !parameter (niter=24000)  ! for do_futuresol and yrstep = 5.e4 (future Earth to 1.2 Gyr from present)
+      !parameter (niter=12000)  ! for do_futuresol and yrstep = 1.e5 (future Earth to 1.2 Gyr from present)
+      !parameter (niter=1200)  ! for do_futuresol and yrstep = 1.e6 (future Earth to 1.2 Gyr from present)
+      !parameter (niter=120)  ! for do_futuresol and yrstep = 1.e7 (future Earth to 1.2 Gyr from present)
+      !parameter (niter=4570)  ! for do_futuresol and yrstep = 1.e6 (Mars)
+      !parameter (niter=45700)  ! for do_futuresol and yrstep = 1.e5 (Mars)
+      !parameter (niter=91400)  ! for do_futuresol and yrstep = 5.e4 (Mars)
+      !parameter (niter=457000)  ! for do_futuresol and yrstep = 1.e4 (Mars)
+      parameter (niter=50)
       !parameter (niterhalf=1001)
       !parameter (niterquarter=1501)
 
@@ -103,13 +107,14 @@ c----------------------------------------------------------------------c
       logical do_stochastic, soladj, constheatcap, diffadj, iterhalt
       logical do_cs_cycle, do_h2_cycle, oceanalbconst 
       logical do_longitudinal, do_manualseasons, do_gough, do_marshist
-      logical fillet, do_dailyoutput
+      logical fillet, do_dailyoutput, do_futuresol, do_bioprod
       real landsnowfrac, RAND, boxmuller, noisevar, heatcap, ocnalb
       real outgassing, weathering, betaexp, kact, krun, q0
       real pg0, ir2, fh2, co2sat, h2escape, ph2, ncolh2, h2outgas
       real icelineN, icelineS
       real icelineNMax, icelineNMin, icelineSMax, icelineSMin
-      real cl, cw, ci
+      real cl, cw, ci, pco20, pco2soil0, pco2soil, gamma, gammaout
+      real pmin, phalf, gamma0
       integer yrcnt, yrstep, radparam, co2flag
       integer ISEED, resfile, nt, daynum
       integer*4 now(3)
@@ -133,10 +138,11 @@ c----------------------------------------------------------------------c
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
      &               linrad, linalb, solarcon, oceanalbconst, ocnalb,
-     &               do_gough
+     &               do_gough, do_futuresol
 
       NAMELIST /co2cycle/ do_cs_cycle, outgassing, weathering,
-     &               betaexp, kact, krun
+     &               betaexp, kact, krun, pco20, pco2soil0, 
+     &               do_bioprod
 
       NAMELIST /h2cycle/ do_h2_cycle, h2outgas
 
@@ -155,6 +161,7 @@ c  INITIALIZE VARIABLES
       do_stochastic = .false. !if .true. then include stochastic perturbation
       soladj = .false.     !if .true. then include solar forcing adjustment
       do_gough = .false.    !if .true. then use Gough (1981) solar forcing
+      do_futuresol = .false.    !if .true. then use solar forcing from Caldeira and Kasting (1992)
       resfile = 0          !start from previous (1), present Earth (2) hothouse (3), large ice (4)
       q0 = 1360.           !solar constant
       tend = 7.e11          !calculation length (sec)
@@ -167,8 +174,10 @@ c  INITIALIZE VARIABLES
       peri = 76.25     !longitude of perihelion wrt vernal equinox (degrees)
       obl = 23.45               !obliquity (degrees)
       cloudir = -9.5   !correction to outgoing infrared for clouds (W/m^-2)
-      pco20 = 1.e-2   !present atmospheric CO2 concentration (bars)
+      pco20 = 3.e-4   !present atmospheric CO2 concentration (bars)
       pco2 = pco20              !initial co2 concentration for this run (bars)
+      pco2soil0 = 3.e-3   !present soil CO2 concentration (bars)
+      pco2soil = pco2soil0 !initial co2 soil concentration for this run (bars)
       ocean = 0.7      !planet fraction covered by water
       igeog = 1        !geography ('1'=present,'2'=polar,'3'=equatorial,
      &                 ! '4'=100% water,'5'=100% land, '6'=equal lat frac)
@@ -200,6 +209,7 @@ c  INITIALIZE VARIABLES
       iterhalt = .false.  ! set .true. to enable halt based on iterations
       do_cs_cycle = .false. !set .true. to enable carbonate-silicate cycle
       do_h2_cycle = .false. !set .true. to enable H2 cycle
+      do_bioprod = .false.  !set .true. to enable the biological productivity function from Caldeira and Kasting (1992)
       outgassing = 7.0  ! volcanic outgassing rate (bars/Gyr)
       weathering = 7.0  ! weathering rate (bars/Gyr)
       betaexp = 0.50       ! weathering exponent
@@ -221,6 +231,7 @@ c  INITIALIZE VARIABLES
       nt = 1          !counter for number of timesteps 
       daynum = 1          !counter for number of days per orbit
       icetemp = 263.15    !threshold for iceline
+      gammaout = 1.0      !initial value of biological productivity function relative to present Earth
 
       do_dailyoutput = .false.
       fillet = .false.
@@ -385,6 +396,14 @@ c  SET SOLAR CONSTANT, ECCENTRICITY, AND OBLIQUITY
             obliq(p)  = obl
           end if
         end do
+      else if ( do_futuresol ) then
+        do p = 1, niter, 1
+          solcon(p) = relsolcon *
+     &                  q0/(1 - 0.38*((p-1)*yrstep/1.e9/4.55))
+          ecce(p)   = ecc
+          prec(p)   = peri
+          obliq(p)  = obl
+        end do
       else
         do p = 1, niter, 1
           solcon(p) = q0 * relsolcon
@@ -490,8 +509,8 @@ c      write(15,233)
          tlast = tlast + dt
          nt = nt + 1
       else
-         write(*,*) 'Calculation time has elapsed.'
-         goto 1000
+!         write(*,*) 'Calculation time has elapsed.'
+!         goto 1000
       end if
 
       m = w*(t-tperi)
@@ -817,6 +836,8 @@ c  CARBONATE-SILICATE WEATHERING
 
       !carbonate-silicate cycle on long time scale, following Menou (2014)
       if ( temp(k) .ge. 273.15 ) then
+!        wthrate(k) = warea(k)*weathering*((pco2/pco2soil)**betaexp)
+!     &   *exp(kact*(temp(k)-288.))*(1+(krun*(temp(k)-288.)))**0.65
         wthrate(k) = warea(k)*weathering*((pco2/pco20)**betaexp)
      &   *exp(kact*(temp(k)-288.))*(1+(krun*(temp(k)-288.)))**0.65
       else
@@ -1432,10 +1453,16 @@ c  SEASONAL AVERAGING
       ann_co2cldave = co2cldavesum/nstep
 
       if(.not.last) then
-        write(18,711) yrcnt,maxval(temp),minval(temp),pg0,pco2,co2flag,
-     &    fh2,d
- 711    format(2x,i12,2x,f8.3,2x,f8.3,2x,e12.3,2x,e12.3,2x,i12,
-     &    2x,f8.5,2x,f8.5)
+!        write(18,711) yrcnt,maxval(temp),minval(temp),pg0,pco2,co2flag,
+!     &    fh2,d
+!        write(18,711) yrcnt,maxval(temp),minval(temp),pg0,pco2,co2flag,
+!     &    q,d
+        write(18,711) yrcnt,ann_tempave,pg0,pco2,pco2soil,
+     &    gammaout,q,d
+ 711    format(2x,i12,2x,f8.3,2x,f8.3,2x,e12.3,2x,e12.3,2x,f5.2,
+     &    2x,f8.2,2x,f8.5)
+! 711    format(2x,i12,2x,f8.3,2x,f8.3,2x,e12.3,2x,e12.3,2x,i12,
+!     &    2x,f8.5,2x,f8.5)
 
 c      write(19,712) pco2,zntempave(1:nbelts)
 c 712  format(2x,f12.3,20(2x,f8.3))
@@ -1503,6 +1530,27 @@ c          pg0 = ( pco2 + pn2 ) / ( 1 - fh2 )
         !print *, pg0, pco2, fh2, ann_tempave
         
       end if
+
+c     !Biological Productivity update to soil pCO2
+      if ( do_bioprod ) then
+
+        pmin = 1.e-5  !10ppm co2 limit
+        !pmin = 1.e-6  !1ppm co2 limit
+
+        phalf = 2.108e-4  !assumes 10ppm limit, see Caldeira & Kasting (1992) for calculation method
+        !phalf = 2.1692e-4  !assumes 1ppm limit       
+
+        gamma = 2*(1-((ann_tempave-tempinit)-25)/25)**2 *
+     &           ((pco2-pmin)/(phalf+(pco2-pmin)))
+        if ( yricnt .eq. 1 ) then
+          gamma0 = gamma
+        end if
+        gammaout = gamma / gamma0
+
+        pco2soil = pco2soil0*gamma*(1-(pco20/pco2soil0)) + pco2
+
+      end if
+
 
 c  ADJUST DIFFUSION COEFFICIENT
       avemol = mp*(28.0*pn2+44.*pco2 + 2.0*ph2)/(pg0) 
