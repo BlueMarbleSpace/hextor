@@ -71,13 +71,15 @@ c----------------------------------------------------------------------c
       parameter (twopi=2*pi)
       !parameter (niter=1)
       !parameter (niter=300000)
-      !parameter (niter=4570)  ! for do_gough and yrstep = 1.e6
-      !parameter (niter=45700)  ! for do_gough and yrstep = 1.e5
-      !parameter (niter=91400)  ! for do_gough and yrstep = 5.e4
-      !parameter (niter=457000)  ! for do_gough and yrstep = 1.e4
-      parameter (niter=50)
-      parameter (niterhalf=1001)
-      parameter (niterquarter=1501)
+      parameter (niter=1200)  ! for do_gough and yrstep = 1.e6 (future Earth to 1.2 Gyr from present)
+      !parameter (niter=120)  ! for do_gough and yrstep = 1.e7 (future Earth to 1.2 Gyr from present)
+      !parameter (niter=4570)  ! for do_gough and yrstep = 1.e6 (Mars)
+      !parameter (niter=45700)  ! for do_gough and yrstep = 1.e5 (Mars)
+      !parameter (niter=91400)  ! for do_gough and yrstep = 5.e4 (Mars)
+      !parameter (niter=457000)  ! for do_gough and yrstep = 1.e4 (Mars)
+      !parameter (niter=50)
+      !parameter (niterhalf=1001)
+      !parameter (niterquarter=1501)
 
       parameter (ndays=1627)
    
@@ -1689,7 +1691,8 @@ c9997  format(20(2x,f8.3))
         yricnt = yricnt + 1
         yrcnt  = yrcnt + yrstep
 
-        print *, "year = ", yrcnt
+        !print *, "year = ", yrcnt
+        print *, "iteration = ", yrcnt / yrstep
 
       else
 
