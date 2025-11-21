@@ -1,6 +1,6 @@
 # HEXTOR (Habitable EBM for eXoplaneT ObseRvations)
 
-README file for release 4.0.0
+README file for release 4.0.2
 
 ## Obtaining the Code
 Use the command below to clone the repository with submodules. This is required to obtain the ffhash module, which is required for the radiaitive transfer lookup table.
