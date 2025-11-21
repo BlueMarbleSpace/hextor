@@ -13,7 +13,7 @@ Use the command below to clone the repository with submodules. This is required 
 
 2. Edit runEBM.sh set the value of "wdir"
 
-3. Adjust any model parameters by editing the file ./input.nml. Additional namelists confiturations are provided in ./namelists/
+3. Copy a desired namelist template file from ./namelists/ or ./fillet/ to the . directory. Adjust any model parameters by editing the file ./input.nml
 
 4. Adjust the length of the model integration by setting the value of the "niter" parameter in ./model/driver.f
 

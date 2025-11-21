@@ -2,6 +2,9 @@
 *.mod
 *.out
 plots*
+input.nml
+bifurcation.sh
+input.nml.bifurcation
 model/driver
 model/input.nml
 model/data/restart.dat
