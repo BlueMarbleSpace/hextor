@@ -234,7 +234,7 @@ c  INITIALIZE VARIABLES
       gammaout = 1.0      !initial value of biological productivity function relative to present Earth
 
       do_dailyoutput = .false.
-      fillet = .false.
+      fillet = .true.
       do_marshist = .false.
 
       CALL itime( now )
