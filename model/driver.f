@@ -84,6 +84,11 @@ c----------------------------------------------------------------------c
       parameter (niter=50)
       !parameter (niterhalf=1001)
       !parameter (niterquarter=1501)
+      !parameter (niter=4570)  ! for do_gough and yrstep = 1.e6
+      !parameter (niter=45700)  ! for do_gough and yrstep = 1.e5
+      !parameter (niter=91400)  ! for do_gough and yrstep = 5.e4
+      !parameter (niter=457000)  ! for do_gough and yrstep = 1.e4
+      !parameter (niter=200000)
 
       parameter (ndays=1627)
    
@@ -108,6 +113,7 @@ c----------------------------------------------------------------------c
       logical do_cs_cycle, do_h2_cycle, oceanalbconst 
       logical do_longitudinal, do_manualseasons, do_gough, do_marshist
       logical fillet, do_dailyoutput, do_futuresol, do_bioprod
+      logical haltonCO2cond
       real landsnowfrac, RAND, boxmuller, noisevar, heatcap, ocnalb
       real outgassing, weathering, betaexp, kact, krun, q0
       real pg0, ir2, fh2, co2sat, h2escape, ph2, ncolh2, h2outgas
@@ -118,7 +124,7 @@ c----------------------------------------------------------------------c
       integer yrcnt, yrstep, radparam, co2flag
       integer ISEED, resfile, nt, daynum
       integer*4 now(3)
-      real total, snowalb, tempinit, solarcon, fco2, icetemp
+      real total, snowalb, tempinit, solarcon, fco2, icetemp, addghg
       dimension solcon(niter),prec(niter),ecce(niter),
      &  yrlabel(niter),obliq(niter)
       dimension solconD(ndays),precD(ndays),ecceD(ndays),
@@ -138,7 +144,7 @@ c----------------------------------------------------------------------c
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
      &               linrad, linalb, solarcon, oceanalbconst, ocnalb,
-     &               do_gough, do_futuresol
+     &               do_gough, do_futuresol, addghg
 
       NAMELIST /co2cycle/ do_cs_cycle, outgassing, weathering,
      &               betaexp, kact, krun, pco20, pco2soil0, 
@@ -232,6 +238,8 @@ c  INITIALIZE VARIABLES
       daynum = 1          !counter for number of days per orbit
       icetemp = 263.15    !threshold for iceline
       gammaout = 1.0      !initial value of biological productivity function relative to present Earth
+      addghg = 0          !additional greenhouse gas IR warming
+      haltonCO2cond = .true. !halt execution when CO2 begins condensing
 
       do_dailyoutput = .false.
       fillet = .true.
@@ -1316,6 +1324,20 @@ c  SURFACE TEMPERATURE - SOLVE ENERGY-BALANCE EQUATION
          !c(k) = 5.25e6 * 40
       end if
 
+      if ( do_marshist ) then
+        !if ( yricnt .gt. 35700 ) then
+        !  addghg = 0.0
+        !end if
+        !if ( yricnt .gt. 25700 ) then
+        !  addghg = 40.0/( 1 + 0.01*exp(( yricnt - 25700 ) / 1000. ))
+        !end if
+        !if ( yricnt .eq. 11700 ) then
+        !  call geog(5)
+        !end if
+      end if
+
+      ir(k) = ir(k) - addghg
+
       if( do_stochastic ) then
         temp(k) = (diff(k)*t2prime(k)-ir(k)+s(k)*(1-atoa(k)))*dt/c(k) 
      &            + sqrt(noisevar)*boxmuller()
@@ -1345,8 +1367,11 @@ c-nb   Set minimum temperature based on saturation temperature of CO2
         co2flag  = 1
         temp(k) = 3.1823*log10(pco2)**3 + 10.5165*log10(pco2)**2 + 
      &           28.5760*log10(pco2) + 192.2084 
-c      print *, "CO2 is condensing!"
-c      print *, temp, pco2, co2sat
+        if ( haltonCO2cond ) then
+          print *, "CO2 is condensing!"
+          print *, temp, pco2, co2sat
+          stop
+        end if
       end if
 
 !      if ((yrcnt.gt.134.6e6).and.(yrcnt.lt.135e6)) then
