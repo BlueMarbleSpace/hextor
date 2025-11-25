@@ -1762,10 +1762,12 @@ c9997  format(20(2x,f8.3))
 
         if( yricnt .ge. niter ) goto 1000
         yricnt = yricnt + 1
-        yrcnt  = yrcnt + yrstep
+        !yrcnt  = yrcnt + yrstep
+        yrcnt  = yricnt
 
         !print *, "year = ", yrcnt
-        print *, "iteration = ", yrcnt / yrstep
+        !print *, "iteration = ", yrcnt / yrstep
+        print *, "step = ", yrcnt
 
       else
 
