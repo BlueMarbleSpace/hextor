@@ -81,6 +81,7 @@ c----------------------------------------------------------------------c
       !parameter (niter=45700)  ! for do_futuresol and yrstep = 1.e5 (Mars)
       !parameter (niter=91400)  ! for do_futuresol and yrstep = 5.e4 (Mars)
       !parameter (niter=457000)  ! for do_futuresol and yrstep = 1.e4 (Mars)
+      !parameter (niter=1000)
       parameter (niter=50)
       !parameter (niterhalf=1001)
       !parameter (niterquarter=1501)
@@ -242,7 +243,7 @@ c  INITIALIZE VARIABLES
       haltonCO2cond = .true. !halt execution when CO2 begins condensing
 
       do_dailyoutput = .false.
-      fillet = .true.
+      fillet = .false.
       do_marshist = .false.
 
       CALL itime( now )
@@ -1328,9 +1329,10 @@ c  SURFACE TEMPERATURE - SOLVE ENERGY-BALANCE EQUATION
         !if ( yricnt .gt. 35700 ) then
         !  addghg = 0.0
         !end if
-        !if ( yricnt .gt. 25700 ) then
-        !  addghg = 40.0/( 1 + 0.01*exp(( yricnt - 25700 ) / 1000. ))
-        !end if
+        if ( yricnt .gt. 25700 ) then
+          addghg = 65.0/( 1 + 0.01*exp(( yricnt - 25700 ) / 1000. ))
+          !addghg = 40.0/( 1 + 0.01*exp(( yricnt - 25700 ) / 1000. ))
+        end if
         !if ( yricnt .eq. 11700 ) then
         !  call geog(5)
         !end if
