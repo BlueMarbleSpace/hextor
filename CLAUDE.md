@@ -37,10 +37,10 @@ If `source /opt/intel/oneapi/setvars.sh` is not run first, `./driver` will fail 
 
 **Outputs** are written to `model/out/`:
 - `tempseries.out` — annual time series: year, ann_tempave (K), pg0 (bar), pco2 (bar), pco2soil (bar), gammaout, q (W/m²), d
-- `zonal.out` — per-belt zonal statistics (final year): lat, Tave, Tmin, dec@Tmin, Tmax, dec@Tmax, albedo
+- `zonal.out` — per-belt zonal statistics (final year): lat, Tave, Tmin, dec@Tmin, Tmax, dec@Tmax, albedo, OLR (W/m²), ASR (W/m²)
 - `geog.out` — per-belt geography: lat, ocean fraction (focean)
 
-**Plotting**: NCL scripts in `plots/` (e.g., `plotTempSeries.ncl`, `plotBistability.ncl`). A Python 4-panel summary script is at `plots/summary_plot.py` — produces `plots/summary_preindustrial.png` with latitude on the horizontal axis across all zonal panels (temperature profile, seasonal amplitude, convergence, albedo).
+**Plotting**: NCL scripts in `plots/` (e.g., `plotTempSeries.ncl`, `plotBistability.ncl`). A Python 4-panel summary script is at `plots/summary_plot.py` — panels are: surface temperature (annual mean + seasonal envelope), planetary albedo, energy balance (ASR and OLR vs latitude), and land fraction. Saves PNG + EPS. Run as `python plots/summary_plot.py` (reads `model/out/`) or `python plots/summary_plot.py <subdir>` (reads `/models/hextor/experiments/<subdir>/` and saves output there).
 
 A radiation module comparison script is at `model/radiation/compare_radiation.py` — run as `python compare_radiation.py out_old.txt out_new.txt [figure.png]`. Prints statistics and saves a 3-panel publication figure (PNG + EPS) showing mean |ΔOLR| and |ΔPALB| over CO₂ × temperature, and |ΔPALB| over zenith × surface albedo.
 
