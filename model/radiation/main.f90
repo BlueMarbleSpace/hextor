@@ -20,7 +20,7 @@ pco2levels = (/ 1.e-6,3.e-6,6.e-6,1.e-5, 3.e-5, 6.e-5,1.e-4, &
 3.e-4, 6.e-4,1.e-3, 3.e-3, 6.e-3,1.e-2, 3.e-2, 6.e-2,1.e-1,  &
 3.e-1, 6.e-1,1., 2., 3., 4., 5., 6., 7., 8., 9., 10. /)
 
-call radiation_init
+call radiation_init( "./radiation_N2_CO2_Sun.h5" )
 
 !do temp = tstart, tend, tstep
 !  do i = 1, 28

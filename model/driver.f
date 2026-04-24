@@ -108,7 +108,7 @@ c----------------------------------------------------------------------c
      &  znolrsum(nbelts), znolrave(nbelts), 
      &  znsurfalbsum(nbelts), znsurfalbave(nbelts)
 
-      character  header*80,file(0:3)*8
+      character  header*80,file(0:3)*8,radfile*256
       logical seasons, last, linrad, linalb, cloudalb
       logical do_stochastic, soladj, constheatcap, diffadj, iterhalt
       logical do_cs_cycle, do_h2_cycle, oceanalbconst 
@@ -145,7 +145,7 @@ c----------------------------------------------------------------------c
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
      &               linrad, linalb, solarcon, oceanalbconst, ocnalb,
-     &               do_gough, do_futuresol, addghg
+     &               do_gough, do_futuresol, addghg, radfile
 
       NAMELIST /co2cycle/ do_cs_cycle, outgassing, weathering,
      &               betaexp, kact, krun, pco20, pco2soil0, 
@@ -158,6 +158,7 @@ c----------------------------------------------------------------------c
 
 c  NAMELIST PARAMETERS
       INTEGER namelistid
+      DATA namelistid / 10 /
       OPEN( namelistid, FILE='./input.nml', DELIM='APOSTROPHE' )
 
 c  INITIALIZE VARIABLES
@@ -226,6 +227,7 @@ c  INITIALIZE VARIABLES
       fh2 = 0.0
       h2outgas = 2.67e12
       radparam = 4      ! OLR/albedo parameterization: (0) Williams & Kasting, (1) CO2/N2, (2) CO2/H2, (3) lookup table, (4) New CO2/H2
+      radfile = './radiation/radiation_N2_CO2_Sun.h5'
       nfile = 0
       yrstep = 1
       yrcnt = 0
@@ -319,7 +321,7 @@ c SET UP INITIAL TEMPERATURE PROFILE
           !ph2 = pg0*fh2
           !pn2 = pg0
         end if
-        call radiation_init
+        call radiation_init( radfile )
 
       else if (radparam .eq. 4 ) then
         pco2 = pg0*fco2
