@@ -8,22 +8,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build and Run
 
-Before building, set machine-specific paths in two files:
+Before building, load the Intel compiler environment and set machine-specific paths:
 
 ```bash
-# 1. Set FC (Fortran compiler) and WDIR in model/Makefile
+# 1. Load the Intel oneAPI compiler environment (required — driver links against libimf)
+source /opt/intel/oneapi/setvars.sh
+
+# 2. Set FC (Fortran compiler) and WDIR in model/Makefile
 #    FC is typically an HDF5-aware wrapper: h5fc (wrapping ifort or gfortran)
 #    WDIR must be the absolute path to model/
 
-# 2. Set wdir in runEBM.sh to match your system
+# 3. Set wdir in runEBM.sh to match your system
 
-# 3. Copy a namelist template and edit parameters
+# 4. Copy a namelist template and edit parameters
 cp namelists/input.nml.earth.aqua.23 input.nml
 # Edit input.nml as needed
 
-# 4. Build and run
+# 5. Build and run
 ./runEBM.sh
 ```
+
+If `source /opt/intel/oneapi/setvars.sh` is not run first, `./driver` will fail silently with a missing `libimf.so` error and `runEBM.sh` (a csh script with no error-halting) will appear to succeed while returning stale output files.
 
 **Bifurcation analysis** (sweeps solar constant across multiple runs):
 ```bash
@@ -31,11 +36,11 @@ cp namelists/input.nml.earth.aqua.23 input.nml
 ```
 
 **Outputs** are written to `model/out/`:
-- `tempseries.out` — time series: time, Tmax, Tmin, pg0, pco2, co2_condensation, fh2, diffusion
-- `zonal.out` — zonal (latitudinal) temperature profiles per timestep
-- `geog.out` — geographic temperature profiles
+- `tempseries.out` — annual time series: year, ann_tempave (K), pg0 (bar), pco2 (bar), pco2soil (bar), gammaout, q (W/m²), d
+- `zonal.out` — per-belt zonal statistics (final year): lat, Tave, Tmin, dec@Tmin, Tmax, dec@Tmax, albedo
+- `geog.out` — per-belt geography: lat, ocean fraction (focean)
 
-**Plotting** uses NCL scripts in `plots/` (e.g., `plotTempSeries.ncl`, `plotBistability.ncl`).
+**Plotting**: NCL scripts in `plots/` (e.g., `plotTempSeries.ncl`, `plotBistability.ncl`). A Python 4-panel summary script is also available at `plots/summary_plot.py` — produces `plots/summary_preindustrial.png` with zonal temperature profile, seasonal amplitude, convergence, and albedo panels.
 
 There is no traditional test suite; correctness is verified by comparing simulation outputs to known results.
 
@@ -83,3 +88,5 @@ The `namelists/` directory contains 30+ pre-configured scenarios (Earth aquaplan
 - Compiler flags include `-parallel` (ifort) — the model supports light multi-threading through the HDF5 layer.
 - `model/driver` (the compiled binary) and output files in `model/out/` are gitignored.
 - `input.nml` at the repo root is gitignored; `model/input.nml` is the copy used at runtime (written by `runEBM.sh`).
+- **Zenith angle fix (driver.f:1130):** `getPALB` receives `zendeg` (zenith angle in degrees). The correct expression is `acos(mu(k))*180./pi`; the earlier form `mu(k)*180/pi` passed cos(z)×(180/π) instead, producing incorrect planetary albedo for `radparam=3`.
+- **Pre-industrial Earth calibration** (`radparam=3`, `igeog=1`): `fco2=2.8e-4`, `d0=0.58`, `cloudir=2.5` converges to T=288.2 K with ice lines at ±68°/74°. See `namelists/input.nml.earth.pres.23` as the base template.

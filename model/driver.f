@@ -1127,7 +1127,7 @@ c      as = .216
         atoa(k) = term1 + term2 + term3 + term4 + term5 + term6
 
       else if ( radparam .eq. 3 ) then
-        zendeg = mu(k)*180/pi
+        zendeg = acos(mu(k))*180./pi
 
         call getPALB( fco2, temp(k), zendeg,        
      &                surfalb(k), atoa(k) )

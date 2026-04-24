@@ -2,11 +2,6 @@
 
 README file for release 4.0.2
 
-## Obtaining the Code
-Use the command below to clone the repository with submodules. This is required to obtain the ffhash module, which is required for the radiaitive transfer lookup table.
-
-`git clone --recurse-submodules https://github.com/BlueMarbleSpace/hextor.git`
-
 ## Running the Model
 
 1. Edit ./model/Makefile and set the values of the Fortran compiler FC and location of this model WDIR
