@@ -40,7 +40,9 @@ If `source /opt/intel/oneapi/setvars.sh` is not run first, `./driver` will fail 
 - `zonal.out` — per-belt zonal statistics (final year): lat, Tave, Tmin, dec@Tmin, Tmax, dec@Tmax, albedo
 - `geog.out` — per-belt geography: lat, ocean fraction (focean)
 
-**Plotting**: NCL scripts in `plots/` (e.g., `plotTempSeries.ncl`, `plotBistability.ncl`). A Python 4-panel summary script is also available at `plots/summary_plot.py` — produces `plots/summary_preindustrial.png` with zonal temperature profile, seasonal amplitude, convergence, and albedo panels.
+**Plotting**: NCL scripts in `plots/` (e.g., `plotTempSeries.ncl`, `plotBistability.ncl`). A Python 4-panel summary script is at `plots/summary_plot.py` — produces `plots/summary_preindustrial.png` with latitude on the horizontal axis across all zonal panels (temperature profile, seasonal amplitude, convergence, albedo).
+
+A radiation module comparison script is at `model/radiation/compare_radiation.py` — run as `python compare_radiation.py out_old.txt out_new.txt [figure.png]`. Prints statistics and saves a 3-panel publication figure (PNG + EPS) showing mean |ΔOLR| and |ΔPALB| over CO₂ × temperature, and |ΔPALB| over zenith × surface albedo.
 
 There is no traditional test suite; correctness is verified by comparing simulation outputs to known results.
 
@@ -89,4 +91,4 @@ The `namelists/` directory contains 30+ pre-configured scenarios (Earth aquaplan
 - `model/driver` (the compiled binary) and output files in `model/out/` are gitignored.
 - `input.nml` at the repo root is gitignored; `model/input.nml` is the copy used at runtime (written by `runEBM.sh`).
 - **Zenith angle fix (driver.f:1130):** `getPALB` receives `zendeg` (zenith angle in degrees). The correct expression is `acos(mu(k))*180./pi`; the earlier form `mu(k)*180/pi` passed cos(z)×(180/π) instead, producing incorrect planetary albedo for `radparam=3`.
-- **Pre-industrial Earth calibration** (`radparam=3`, `igeog=1`): `fco2=2.8e-4`, `d0=0.58`, `cloudir=2.5` converges to T=288.2 K with ice lines at ±68°/74°. See `namelists/input.nml.earth.pres.23` as the base template.
+- **Pre-industrial Earth calibration** (`radparam=3`, `igeog=1`): `fco2=2.8e-4`, `d0=0.58`, `cloudir=3.0`, `diffadj=.false.` converges to T≈288 K. See `namelists/input.nml.earth.pres.23` as the base template. (With `diffadj=.true.`, effective D rises to ~0.639 because the model has no explicit O₂ — the N₂-dominated atmosphere is lighter and has higher Cp than the reference, so `cloudir=2.5` was the prior tuning for that case.)

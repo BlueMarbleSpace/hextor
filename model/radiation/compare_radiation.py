@@ -12,6 +12,7 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # ── Load ──────────────────────────────────────────────────────────────────────
 
@@ -93,100 +94,97 @@ adolr  = np.where(valid_olr,  np.abs(dolr),  np.nan).reshape(nalb, nzen, ntmp, n
 adpalb = np.where(valid_palb, np.abs(dpalb), np.nan).reshape(nalb, nzen, ntmp, nco2)
 
 # Reduce axes for each panel
-olr_T_co2    = np.nanmean(adolr,  axis=(0, 1))   # (ntmp, nco2) — mean over zen & alb
-palb_T_co2   = np.nanmean(adpalb, axis=(0, 1))   # (ntmp, nco2)
-palb_alb_zen = np.nanmean(adpalb, axis=(2, 3))   # (nalb, nzen) — mean over T & CO2
-palb_by_zen  = np.nanmean(adpalb, axis=(0, 2, 3))  # (nzen,)
-palb_by_alb  = np.nanmean(adpalb, axis=(1, 2, 3))  # (nalb,)
+olr_T_co2    = np.nanmean(adolr,  axis=(0, 1))  # (ntmp, nco2)
+palb_T_co2   = np.nanmean(adpalb, axis=(0, 1))  # (ntmp, nco2)
+palb_alb_zen = np.nanmean(adpalb, axis=(2, 3))  # (nalb, nzen)
 
-# ── Figure ────────────────────────────────────────────────────────────────────
-fig, axes = plt.subplots(2, 3, figsize=(16, 9))
-fig.suptitle("Radiation module: improved vs original interpolation",
-             fontsize=13, fontweight='bold')
+# ── Style ─────────────────────────────────────────────────────────────────────
+plt.rcParams.update({
+    'font.family'      : 'sans-serif',
+    'font.size'        : 10,
+    'axes.labelsize'   : 11,
+    'axes.titlesize'   : 11,
+    'axes.titleweight' : 'bold',
+    'axes.spines.top'  : False,
+    'axes.spines.right': False,
+    'axes.grid'        : False,
+    'xtick.labelsize'  : 9,
+    'ytick.labelsize'  : 9,
+    'figure.facecolor' : 'white',
+})
 
-CMAP = 'plasma'
+CMAP     = 'viridis'
 log10co2 = np.log10(u_co2)
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def add_colorbar(fig, ax, im, label=''):
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.06)
+    cb = fig.colorbar(im, cax=cax)
+    cb.ax.tick_params(labelsize=8)
+    if label:
+        cb.set_label(label, fontsize=9)
+    return cb
+
 def co2_xticks(ax):
-    ticks = log10co2[::4]
+    ticks = np.arange(np.floor(log10co2.min()), np.ceil(log10co2.max()) + 1)
     ax.set_xticks(ticks)
-    ax.set_xticklabels([f'$10^{{{v:.1f}}}$' for v in ticks], fontsize=7)
-    ax.set_xlabel('CO₂ fraction')
+    ax.set_xticklabels([f'$10^{{{int(v)}}}$' for v in ticks],
+                       rotation=35, ha='right', rotation_mode='anchor')
+    ax.set_xlabel('CO$_2$ fraction')
 
-def tmp_yticks(ax):
-    ax.set_yticks(u_tmp)
-    ax.set_yticklabels([f'{int(v)}' for v in u_tmp], fontsize=8)
-    ax.set_ylabel('Temperature (K)')
+def panel_label(ax, letter):
+    ax.text(-0.13, 1.04, f'({letter})', transform=ax.transAxes,
+            fontsize=11, fontweight='bold', va='bottom', ha='left')
 
-# ── (0,0)  |ΔOLR| over CO2 × T ───────────────────────────────────────────────
-ax = axes[0, 0]
-im = ax.pcolormesh(log10co2, u_tmp, olr_T_co2, cmap=CMAP, shading='auto')
-co2_xticks(ax); tmp_yticks(ax)
-ax.set_title('Mean |ΔOLR| (raw units)\naveraged over zenith & surface albedo')
-fig.colorbar(im, ax=ax).ax.tick_params(labelsize=8)
+# ── Figure ────────────────────────────────────────────────────────────────────
+fig, axes = plt.subplots(1, 3, figsize=(14, 4.5))
 
-# ── (0,1)  |ΔPALB| over CO2 × T ──────────────────────────────────────────────
-ax = axes[0, 1]
-im = ax.pcolormesh(log10co2, u_tmp, palb_T_co2, cmap=CMAP, shading='auto')
-co2_xticks(ax); tmp_yticks(ax)
-ax.set_title('Mean |ΔPALB|\naveraged over zenith & surface albedo')
-fig.colorbar(im, ax=ax).ax.tick_params(labelsize=8)
+# Integer coordinates give uniform cell heights; relabel with actual values
+tmp_idx = np.arange(ntmp)
+zen_idx = np.arange(nzen)
+alb_idx = np.arange(nalb)
 
-# ── (0,2)  |ΔPALB| over zenith × surface albedo ──────────────────────────────
-ax = axes[0, 2]
-# palb_alb_zen shape: (nalb, nzen) → rows = surfalb, cols = zenith
-im = ax.pcolormesh(u_zen, u_alb, palb_alb_zen, cmap=CMAP, shading='auto')
-ax.set_xticks(u_zen)
-ax.set_xticklabels([f'{int(v)}°' for v in u_zen], fontsize=9)
-ax.set_yticks(u_alb)
-ax.set_yticklabels([f'{v:.2f}' for v in u_alb], fontsize=9)
+# ── (a)  |ΔOLR| over CO₂ × T ─────────────────────────────────────────────────
+ax = axes[0]
+im = ax.pcolormesh(log10co2, tmp_idx, olr_T_co2, cmap=CMAP, shading='auto')
+co2_xticks(ax)
+ax.set_yticks(tmp_idx)
+ax.set_yticklabels([f'{int(v)}' for v in u_tmp])
+ax.set_ylabel('Temperature (K)')
+ax.set_title('Mean |ΔOLR| (W m$^{-2}$)')
+add_colorbar(fig, ax, im)
+panel_label(ax, 'a')
+
+# ── (b)  |ΔPALB| over CO₂ × T ────────────────────────────────────────────────
+ax = axes[1]
+im = ax.pcolormesh(log10co2, tmp_idx, palb_T_co2, cmap=CMAP, shading='auto')
+co2_xticks(ax)
+ax.set_yticks(tmp_idx)
+ax.set_yticklabels([f'{int(v)}' for v in u_tmp])
+ax.set_ylabel('Temperature (K)')
+ax.set_title('Mean |ΔPALB|')
+add_colorbar(fig, ax, im)
+panel_label(ax, 'b')
+
+# ── (c)  |ΔPALB| over zenith × surface albedo ────────────────────────────────
+ax = axes[2]
+im = ax.pcolormesh(zen_idx, alb_idx, palb_alb_zen, cmap=CMAP, shading='auto')
+ax.set_xticks(zen_idx)
+ax.set_xticklabels([f'{int(v)}°' for v in u_zen])
+ax.set_yticks(alb_idx)
+ax.set_yticklabels([f'{v:.2f}' for v in u_alb])
 ax.set_xlabel('Zenith angle')
 ax.set_ylabel('Surface albedo')
-ax.set_title('Mean |ΔPALB|\naveraged over CO₂ & temperature')
-fig.colorbar(im, ax=ax).ax.tick_params(labelsize=8)
+ax.set_title('Mean |ΔPALB|')
+add_colorbar(fig, ax, im)
+panel_label(ax, 'c')
 
-# ── (1,0)  ΔOLR histogram ─────────────────────────────────────────────────────
-ax = axes[1, 0]
-d_olr = dolr[valid_olr]
-ax.hist(d_olr, bins=60, color='steelblue', edgecolor='none', alpha=0.85)
-ax.axvline(0, color='k', lw=0.8, ls='--')
-ax.set_xlabel('ΔOLR (new − old, raw units)')
-ax.set_ylabel('Count')
-ax.set_title('Distribution of OLR differences')
-ax.text(0.97, 0.95,
-        f'max = {np.max(np.abs(d_olr)):.1f}\nRMS = {np.sqrt(np.mean(d_olr**2)):.1f}',
-        transform=ax.transAxes, ha='right', va='top', fontsize=9,
-        bbox=dict(boxstyle='round', fc='white', alpha=0.8))
-
-# ── (1,1)  mean |ΔPALB| vs zenith, with per-T curves ─────────────────────────
-ax = axes[1, 1]
-for it in range(ntmp):
-    curve = np.nanmean(adpalb[:, :, it, :], axis=(0, 2))  # (nzen,)
-    ax.plot(u_zen, curve, '-', color='grey', lw=0.7, alpha=0.5)
-ax.plot(u_zen, palb_by_zen, 'o-', color='darkorange', lw=2, ms=7,
-        zorder=3, label='overall mean')
-ax.set_xticks(u_zen)
-ax.set_xticklabels([f'{int(v)}°' for v in u_zen])
-ax.set_xlabel('Zenith angle (°)')
-ax.set_ylabel('Mean |ΔPALB|')
-ax.set_title('PALB difference vs zenith\n(bold = overall mean; grey = per-T)')
-ax.legend(fontsize=8)
-ax.grid(True, alpha=0.3)
-
-# ── (1,2)  mean |ΔPALB| vs surface albedo, with per-T curves ─────────────────
-ax = axes[1, 2]
-for it in range(ntmp):
-    curve = np.nanmean(adpalb[:, :, it, :], axis=(1, 2))  # (nalb,)
-    ax.plot(u_alb, curve, '-', color='grey', lw=0.7, alpha=0.5)
-ax.plot(u_alb, palb_by_alb, 's-', color='forestgreen', lw=2, ms=7,
-        zorder=3, label='overall mean')
-ax.set_xticks(u_alb)
-ax.set_xlabel('Surface albedo')
-ax.set_ylabel('Mean |ΔPALB|')
-ax.set_title('PALB difference vs surface albedo\n(bold = overall mean; grey = per-T)')
-ax.legend(fontsize=8)
-ax.grid(True, alpha=0.3)
-
-plt.tight_layout()
-plt.savefig(fig_path, dpi=150, bbox_inches='tight')
+# ── Save ──────────────────────────────────────────────────────────────────────
+fig.tight_layout(rect=[0, 0, 1, 0.93])
+eps_path = fig_path.rsplit('.', 1)[0] + '.eps'
+fig.savefig(fig_path, dpi=150, bbox_inches='tight')
+fig.savefig(eps_path, bbox_inches='tight')
 print(f"\nFigure saved: {fig_path}")
+print(f"Figure saved: {eps_path}")
