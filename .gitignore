@@ -3,11 +3,11 @@
 *.out
 plots*
 input.nml
-bifurcation.sh
-input.nml.bifurcation
 model/driver
 model/input.nml
 model/data/restart.dat
 model/radiation/radtest
+model/radiation/compare*
+model/radiation/out_*.txt
 experiments*
 namelists/old*
