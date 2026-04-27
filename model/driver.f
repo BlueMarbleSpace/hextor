@@ -105,7 +105,8 @@ c----------------------------------------------------------------------c
      &  zndecmin(nbelts),obstemp(nbelts),iceline(0:5),fice(nbelts),
      &  wthrate(nbelts),warea(nbelts),imco2(nbelts), diff(nbelts),
      &  stab(0:nbelts), znalbsum(nbelts), znalbave(nbelts),
-     &  znolrsum(nbelts), znolrave(nbelts), 
+     &  znolrsum(nbelts), znolrave(nbelts),
+     &  znasrsum(nbelts), znasrave(nbelts),
      &  znsurfalbsum(nbelts), znsurfalbave(nbelts)
 
       character  header*80,file(0:3)*8,radfile*256
@@ -135,12 +136,12 @@ c----------------------------------------------------------------------c
       data  file/ 'spng.out', 'summ.out', 'fall.out', 'wint.out' /
 
 
-      NAMELIST /ebm/ seasons, tend, dt, rot, a, ecc, peri, 
+      NAMELIST /ebm/ seasons, tend, dt, rot, a, ecc, peri,
      &               obl, ocean, igeog, yrstep, resfile, d0,
      &               constheatcap, heatcap, diffadj,
      &               iterhalt, fco2, fh2, pg0, tempinit, msun,
      &               do_longitudinal, do_manualseasons,
-     &               cl, cw, ci, do_dailyoutput
+     &               cl, cw, ci, do_dailyoutput, fillet
 
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
@@ -1402,6 +1403,7 @@ c  ZONAL STATISTICS - if last loop
       zntempsum(k) = zntempsum(k) + temp(k)
       znalbsum(k)  = znalbsum(k) + atoa(k)
       znolrsum(k)  = znolrsum(k) + ir(k)
+      znasrsum(k)  = znasrsum(k) + s(k)*(1-atoa(k))
       znsurfalbsum(k) = znsurfalbsum(k) + surfalb(k)
 
  310  continue                                     !**end of belt loop
@@ -1604,6 +1606,7 @@ c ZONAL SEASONAL AVERAGES
          zntempave(k) = zntempsum(k) / nstep
          znalbave(k) = znalbsum(k) / nstep
          znolrave(k) = znolrsum(k) / nstep
+         znasrave(k) = znasrsum(k) / nstep
          znsurfalbave(k) = znsurfalbsum(k) / nstep
          if ( k .le. nbelts/2 ) then
            shtempave = shtempave + zntempave(k)
@@ -1630,9 +1633,10 @@ c  FIND ICE-LINES (ANNUAL-AVERAGE TEMP < icetemp [=263.15K])
       do 750 k=1,nbelts,1
          write(15,751) latangle(k),zntempave(k),zntempmin(k),
      &      zndecmin(k),zntempmax(k),zndecmax(k),
-     &      znalbave(k)
+     &      znalbave(k),znolrave(k),znasrave(k)
 c-nb     &      (zntempmax(k)-zntempmin(k))/2.
- 751     format(4x,f4.0,9x,f8.3,5x,f8.3,5x,f6.2,5x,f8.3,5x,f6.2,5x,f8.3)
+ 751     format(4x,f4.0,9x,f8.3,5x,f8.3,5x,f6.2,5x,f8.3,5x,f6.2,
+     &      5x,f8.3,5x,f8.3,5x,f8.3)
          write(16,752) latangle(k),(zntempmax(k)-zntempmin(k))/2.,
      &     10.8*abs(x(k)),15.5*abs(x(k)),6.2*abs(x(k))
  752     format(4x,f4.0,4x,4(3x,f8.3))
