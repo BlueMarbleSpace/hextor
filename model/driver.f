@@ -82,7 +82,7 @@ c----------------------------------------------------------------------c
       !parameter (niter=91400)  ! for do_futuresol and yrstep = 5.e4 (Mars)
       !parameter (niter=457000)  ! for do_futuresol and yrstep = 1.e4 (Mars)
       !parameter (niter=1000)
-      parameter (niter=50)
+      parameter (niter=5000)
       !parameter (niterhalf=1001)
       !parameter (niterquarter=1501)
       !parameter (niter=4570)  ! for do_gough and yrstep = 1.e6
@@ -127,6 +127,7 @@ c----------------------------------------------------------------------c
       integer ISEED, resfile, nt, daynum
       integer*4 now(3)
       real total, snowalb, tempinit, solarcon, fco2, icetemp, addghg
+      real fluxcnvg, prev_irave
       dimension solcon(niter),prec(niter),ecce(niter),
      &  yrlabel(niter),obliq(niter)
       dimension solconD(ndays),precD(ndays),ecceD(ndays),
@@ -141,7 +142,8 @@ c----------------------------------------------------------------------c
      &               constheatcap, heatcap, diffadj,
      &               iterhalt, fco2, fh2, pg0, tempinit, msun,
      &               do_longitudinal, do_manualseasons,
-     &               cl, cw, ci, do_dailyoutput, fillet
+     &               cl, cw, ci, do_dailyoutput, fillet,
+     &               haltonCO2cond, fluxcnvg
 
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
@@ -216,6 +218,8 @@ c  INITIALIZE VARIABLES
       diffadj = .true.  ! set .false. to turn off diffusion parameter adjustment
       cloudalb = .true. ! set .false. to disable cloud albedo
       iterhalt = .false.  ! set .true. to enable halt based on iterations
+      fluxcnvg = 0.1      ! OLR convergence threshold (W/m²) for iterhalt mode
+      prev_irave = 0.
       do_cs_cycle = .false. !set .true. to enable carbonate-silicate cycle
       do_h2_cycle = .false. !set .true. to enable H2 cycle
       do_bioprod = .false.  !set .true. to enable the biological productivity function from Caldeira and Kasting (1992)
@@ -771,9 +775,7 @@ c  DIURNALLY-AVERAGED ZENITH ANGLE
          mu(k) = x(k)*sin(dec) + cos(asin(x(k)))*cos(dec)*sin(h)/h
       end if
 
-      !if ( do_longitudinal ) then  
-      !  mu(k) = 1.0
-      !end if
+      if ( do_longitudinal ) mu(k) = max( 0.0, x(k) )
 
       z = acos(mu(k))*180./pi
       zrad = acos(mu(k))
@@ -1299,10 +1301,10 @@ c  DIURNALLY-AVERAGED INSOLATION
 
       if ( do_longitudinal ) then
         if ( x(k) .ge. 0.0 ) then
-          s(k) = (q/pi) * x(k)
+          s(k) = q * x(k)
         else
            s(k) = 0.0
-           ir(k) = ir(k) + cloudir
+           !ir(k) = ir(k) + cloudir    !removes cloudir correction from night-side
         end if 
 
         !if ((x(k) .le. sin(pi/4)) .and. (x(k) .ge. sin(-pi/4))) then 
@@ -1490,7 +1492,7 @@ c  SEASONAL AVERAGING
 !     &    q,d
         write(18,711) yrcnt,ann_tempave,pg0,pco2,pco2soil,
      &    gammaout,q,d
- 711    format(2x,i12,2x,f8.3,2x,f8.3,2x,e12.3,2x,e12.3,2x,f5.2,
+ 711    format(2x,i12,2x,f12.3,2x,f8.3,2x,e12.3,2x,e12.3,2x,f5.2,
      &    2x,f8.2,2x,f8.5)
 ! 711    format(2x,i12,2x,f8.3,2x,f8.3,2x,e12.3,2x,e12.3,2x,i12,
 !     &    2x,f8.5,2x,f8.5)
@@ -1766,15 +1768,19 @@ c9997  format(20(2x,f8.3))
 
       !check for convergence
       if ( iterhalt ) then
-        !print *, "YEAR = ", yrcnt      
 
-        if( yricnt .ge. niter ) goto 1000
+        if( yricnt .ge. niter ) then
+          write(*,*) 'Maximum iterations reached (', niter, ' years).'
+          goto 1000
+        end if
+        if( abs(ann_irave - prev_irave) .lt. fluxcnvg ) then
+          write(*,*) 'Flux converged at year ', yricnt,
+     &      ' (dOLR =', abs(ann_irave - prev_irave), 'W/m2)'
+          goto 1000
+        end if
+        prev_irave = ann_irave
         yricnt = yricnt + 1
-        !yrcnt  = yrcnt + yrstep
         yrcnt  = yricnt
-
-        !print *, "year = ", yrcnt
-        !print *, "iteration = ", yrcnt / yrstep
         print *, "step = ", yrcnt
 
       else
@@ -1783,7 +1789,7 @@ c9997  format(20(2x,f8.3))
 
       end if
 
-      prevtempave = ann_tempave      
+      prevtempave = ann_tempave
 
  800  if(seasons) goto 240
       goto 260

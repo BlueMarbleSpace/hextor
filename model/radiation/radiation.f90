@@ -33,6 +33,12 @@ private :: bracket
   real, dimension(nco2, ntmp)             :: olr_table
   real, dimension(nco2, ntmp, nzen, nsab) :: palb_table
 
+  ! Effective OLR power-law exponents at upper and lower table boundaries,
+  ! fitted from the last/first two temperature levels so extrapolation
+  ! matches the actual table gradient rather than assuming T^4.
+  real, dimension(nco2) :: n_eff_upper
+  real, dimension(nco2) :: n_eff_lower
+
 contains
 
 !==================================================================================
@@ -86,6 +92,15 @@ subroutine radiation_init( radfile )
     palb_table(ico2, itmp, izen, ialb) = database_alb(6,i)
   end do
 
+  ! Fit effective extrapolation exponents from boundary gradients in the table.
+  ! olr_table stores negative values, so ratios are positive and log is valid.
+  do i = 1, nco2
+    n_eff_upper(i) = log( olr_table(i, ntmp)   / olr_table(i, ntmp-1) ) &
+                   / log( templevels(ntmp)       / templevels(ntmp-1)   )
+    n_eff_lower(i) = log( olr_table(i, 2)       / olr_table(i, 1)      ) &
+                   / log( templevels(2)           / templevels(1)        )
+  end do
+
   deallocate( database_olr )
   deallocate( database_alb )
 
@@ -133,9 +148,14 @@ subroutine getOLR( fco2, tg0, olr )
 
   integer :: co2lo, co2hi, tmplo, tmphi
   real    :: co2frac, tmpfrac, olr0, olr1
+  real    :: tg0_eval, n_eff
 
-  call bracket( fco2levels, nco2, fco2, co2lo, co2hi )
-  call bracket( templevels, ntmp, tg0,  tmplo, tmphi )
+  ! Clamp T to table range for interpolation; extrapolate outside using the
+  ! effective exponent fitted from the boundary gradient in radiation_init.
+  tg0_eval = max( templevels(1), min( templevels(ntmp), tg0 ) )
+
+  call bracket( fco2levels, nco2, fco2,     co2lo, co2hi )
+  call bracket( templevels, ntmp, tg0_eval, tmplo, tmphi )
 
   if ( co2lo .eq. co2hi ) then
     co2frac = 0.0
@@ -147,7 +167,7 @@ subroutine getOLR( fco2, tg0, olr )
   if ( tmplo .eq. tmphi ) then
     tmpfrac = 0.0
   else
-    tmpfrac = ( tg0 - templevels(tmplo) ) / ( templevels(tmphi) - templevels(tmplo) )
+    tmpfrac = ( tg0_eval - templevels(tmplo) ) / ( templevels(tmphi) - templevels(tmplo) )
   end if
 
   olr0 = olr_table(co2lo, tmplo) + co2frac * ( olr_table(co2hi, tmplo) - olr_table(co2lo, tmplo) )
@@ -155,6 +175,15 @@ subroutine getOLR( fco2, tg0, olr )
   olr  = olr0 + tmpfrac * ( olr1 - olr0 )
 
   olr = -olr
+
+  if ( tg0 .lt. templevels(1) .or. tg0 .gt. templevels(ntmp) ) then
+    if ( tg0 .gt. templevels(ntmp) ) then
+      n_eff = n_eff_upper(co2lo) + co2frac * ( n_eff_upper(co2hi) - n_eff_upper(co2lo) )
+    else
+      n_eff = n_eff_lower(co2lo) + co2frac * ( n_eff_lower(co2hi) - n_eff_lower(co2lo) )
+    end if
+    olr = olr * ( tg0 / tg0_eval )**n_eff
+  end if
 
   return
 

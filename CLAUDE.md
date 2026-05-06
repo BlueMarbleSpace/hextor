@@ -44,6 +44,10 @@ If `source /opt/intel/oneapi/setvars.sh` is not run first, `./driver` will fail 
 
 A radiation module comparison script is at `model/radiation/compare_radiation.py` — run as `python compare_radiation.py out_old.txt out_new.txt [figure.png]`. Prints statistics and saves a 3-panel publication figure (PNG + EPS) showing mean |ΔOLR| and |ΔPALB| over CO₂ × temperature, and |ΔPALB| over zenith × surface albedo.
 
+**THAI calibration**: `calibrate_thai_hab1.py` (repo root) does a 2D sweep over (d0, cloudir) to match THAI Hab1 GCM ensemble mean targets; reads T_global from `tempseries.out` and T_min/T_max from the ZONAL STATISTICS block of `model.out` (not `zonal.out`, which is only written by `runEBM.sh`). `plots/thai_hab1_comparison.py` generates a 3-panel zonal comparison figure vs GCM reference values — run as `python plots/thai_hab1_comparison.py [subdir]`.
+
+**THAI Hab1 instellation sweep**: `thai_instellation_sweep.py` (repo root) sweeps `relsolcon` (S/S₀, 0.60–1.42) × 3 initial temperatures (233/273/300 K) using `namelists/input.nml.thai.hab1.calibrated`. Writes `thai_hab1_instellation.csv`. Resume-safe. `plots/thai_iceline_figure.py` reads that CSV and saves `thai_hab1_iceline.png/.pdf` — ice line longitude from substellar vs S/S₀. Ice line longitude (0° = substellar, 90° = terminator, 180° = antistellar): `90° − icelineN` when the ice line is on the dayside (icelineN < 90°); `90° − icelineS` when icelineN = 90 (no dayside ice, use nightside ice line; icelineS is negative so lon > 90°). Sentinel icelineN=90, icelineS=−90 → 180° (truly ice-free); icelineN=0, icelineS=0 → 0° (ice-ball).
+
 There is no traditional test suite; correctness is verified by comparing simulation outputs to known results.
 
 ## Architecture
@@ -91,4 +95,6 @@ The `namelists/` directory contains 30+ pre-configured scenarios (Earth aquaplan
 - `model/driver` (the compiled binary) and output files in `model/out/` are gitignored.
 - `input.nml` at the repo root is gitignored; `model/input.nml` is the copy used at runtime (written by `runEBM.sh`).
 - **Zenith angle fix (driver.f:1130):** `getPALB` receives `zendeg` (zenith angle in degrees). The correct expression is `acos(mu(k))*180./pi`; the earlier form `mu(k)*180/pi` passed cos(z)×(180/π) instead, producing incorrect planetary albedo for `radparam=3`.
+- **cloudir behavior:** `cloudir` applies globally to all belts (both dayside and nightside). A former nightside correction that undid `cloudir` on the nightside has been removed. Positive `cloudir` reduces OLR everywhere (warms); negative `cloudir` increases OLR everywhere (cools).
+- **OLR extrapolation (radiation.f90):** Outside the table range [190K, 370K], OLR is extrapolated using a data-driven power-law exponent `n_eff` fitted from the boundary gradient at init time (`n_eff_upper ≈ 2.35`, `n_eff_lower ≈ 3.77`). Not a simple T⁴ law.
 - **Pre-industrial Earth calibration** (`radparam=3`, `igeog=1`): `fco2=2.8e-4`, `d0=0.58`, `cloudir=3.0`, `diffadj=.false.` converges to T≈288 K. See `namelists/input.nml.earth.pres.23` as the base template. (With `diffadj=.true.`, effective D rises to ~0.639 because the model has no explicit O₂ — the N₂-dominated atmosphere is lighter and has higher Cp than the reference, so `cloudir=2.5` was the prior tuning for that case.)
