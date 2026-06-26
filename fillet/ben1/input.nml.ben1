@@ -22,7 +22,8 @@
    yrstep       = 1,
    msun         = 1.9891e33,
    iterhalt     = .true.,
-   do_longitudinal = .false. /
+   do_longitudinal = .false.,
+   fillet       = .true. /
 
  &radiation
    relsolcon	 = 1.0,
@@ -33,7 +34,7 @@
    oceanalbconst = .false.,
    ocnalb        = 0.06,
    landsnowfrac  = 1.00, 
-   cloudir	 = -6.3, 
+   cloudir	 = 3.0, 
    fcloud        = 0.0,
    cloudalb      = .false.,
    soladj        = .false.,

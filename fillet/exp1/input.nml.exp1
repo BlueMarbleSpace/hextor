@@ -25,7 +25,8 @@
    do_longitudinal = .false.,
    cl           = 1.e7, 
    cw           = 4.e8, 
-   ci           = 1.e7 /
+   ci           = 1.e7,
+   fillet       = .true. /
 
  &radiation
    relsolcon	 = XXX,
