@@ -148,7 +148,7 @@ c----------------------------------------------------------------------c
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
      &               linrad, linalb, solarcon, oceanalbconst, ocnalb,
-     &               do_gough, do_futuresol, addghg, radfile
+     &               do_gough, do_futuresol, addghg, radfile, acloud0
 
       NAMELIST /co2cycle/ do_cs_cycle, outgassing, weathering,
      &               betaexp, kact, krun, pco20, pco2soil0, 
@@ -197,6 +197,8 @@ c  INITIALIZE VARIABLES
       relsolcon = 1.0  !relative solar constant (1.0 for present Earth) 
       alpha = -0.078            !alpha: cloud albedo = alpha + beta*zrad
       beta = 0.65      !beta
+      acloud0 = -1.0   !prescribed constant cloud albedo; negative disables
+     &                 ! (zenith-dependent alpha + beta*zrad used instead)
       cw = 2.1e8       !heat capacity over ocean
       cl = 5.25e6      !heat capacity over land
       ci = 1.05e7      !heat capacity over lice
@@ -800,9 +802,13 @@ c  HEAT CAPACITY and SURFACE ALBEDO
       end if
 
       if ( cloudalb ) then
-        acloud(k) = alpha + beta*zrad
+        if ( acloud0 .ge. 0.0 ) then
+          acloud(k) = acloud0
+        else
+          acloud(k) = alpha + beta*zrad
+        end if
       else
-        acloud(k) = 0.0 
+        acloud(k) = 0.0
       end if
 
       if (temp(k).le.273.15) goto 420
