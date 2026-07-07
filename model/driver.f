@@ -1704,20 +1704,51 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
             icelineSMin = iceline(1)
           end if
         else
+c         Single ice-line crossing: one hemisphere has an edge, the other
+c         is uniform.  Check whether the pole on the crossing side is iced
+c         (a genuine polar cap, open toward the equator) or open (a warm
+c         sliver at the pole of an otherwise fully glaciated planet, which
+c         is really a snowball).  Set the opposite, crossing-free hemisphere
+c         from its pole temperature rather than assuming it is glaciated.
+c         zntempave(nbelts) is the north pole belt; zntempave(1) the south.
           if(iceline(1) .gt. 0.0) then
-             icelineN = iceline(1)
-             icelineS = -90.0
-             icelineNMax = 90.0
-             icelineNMin = iceline(1)
-             icelineSMax = -0.0
-             icelineSMin = -90.0
+             if(zntempave(nbelts) .le. icetemp) then
+c               genuine north polar cap; southern hemisphere ice-free
+                icelineN = iceline(1)
+                icelineS = -90.0
+                icelineNMax = 90.0
+                icelineNMin = iceline(1)
+                icelineSMax = -90.0
+                icelineSMin = -90.0
+             else
+c               warm sliver at north pole, rest glaciated -> ice-ball
+                icelineN = 0.0
+                icelineS = 0.0
+                icelineNMax = 90.0
+                icelineNMin = 0.0
+                icelineSMax = 0.0
+                icelineSMin = -90.0
+                write(15,*) '  planet is an ice-ball.'
+             end if
           else
-             icelineN = 90.0
-             icelineS = iceline(1)
-             icelineNMax = 90.0
-             icelineNMin = 90.0
-             icelineSMax = iceline(1)
-             icelineSMin = -90.0
+             if(zntempave(1) .le. icetemp) then
+c               genuine south polar cap; northern hemisphere ice-free
+                icelineN = 90.0
+                icelineS = iceline(1)
+                icelineNMax = 90.0
+                icelineNMin = 90.0
+                icelineSMax = iceline(1)
+                icelineSMin = -90.0
+             else
+c               warm sliver at south pole, rest glaciated -> ice-ball
+                icelineN = 0.0
+                icelineS = 0.0
+                icelineNMax = 90.0
+                icelineNMin = 0.0
+                icelineSMax = 0.0
+                icelineSMin = -90.0
+                write(15,*) '  planet is an ice-ball.'
+             end if
           end if
         end if
       end if
