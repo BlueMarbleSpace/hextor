@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "HEXTOR: Habitable EBM for eXoplaneT ObseRvations"
+authors:
+  - family-names: "Haqq-Misra"
+    given-names: "Jacob"
+    orcid: "https://orcid.org/0000-0003-4346-2611"
+    affiliation: "Blue Marble Space Institute of Science"
+version: 4.2.0
+doi: 10.5281/zenodo.20074008
+date-released: 2026-07-07
+license: MIT
+repository-code: "https://github.com/BlueMarbleSpace/hextor"
+abstract: >-
+  HEXTOR is a latitudinal energy balance model (EBM) for simulating
+  seasonal and latitudinal temperature evolution on Earth-like planets
+  and exoplanets. It supports varying atmospheric compositions (N2, O2,
+  CO2, H2O), orbital parameters, obliquity, eccentricity, and different
+  host stars, with radiative transfer via precomputed lookup tables.
