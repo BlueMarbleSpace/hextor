@@ -1,6 +1,6 @@
 # HEXTOR (Habitable EBM for eXoplaneT ObseRvations)
 
-README file for release 4.2.0
+README file for release 4.2.1
 
 ## Running the Model
 
