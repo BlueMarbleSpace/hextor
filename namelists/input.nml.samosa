@@ -1,0 +1,122 @@
+! ---------------------------------------------------------------------------
+! HEXTOR configuration for the SAMOSA intercomparison
+! (Sparse Atmospheric MOdel Sampling Analysis; Haqq-Misra et al. 2022, PSJ 3,
+! 260 — a CUISINES model intercomparison project).
+!
+! This is a TEMPLATE: tools/run_samosa.py fills the {braced} fields for each
+! of the protocol's cases and writes the result to input.nml.  The values that
+! are NOT braced are the protocol's fixed parameters (Table 2) plus the
+! HEXTOR-specific choices documented below.
+!
+! Protocol fixed parameters (Table 2)
+!   host star       3000 K blackbody
+!   rotation        15 d, synchronous
+!   orbital period  15 d
+!   planet          1 M(Earth), 1 R(Earth), 1 g(Earth)
+!   atmosphere      400 ppm CO2, N2 background
+!   surface         aquaplanet, 50 m slab ocean, no ocean heat transport
+!
+! HEXTOR-specific choices
+!   rot / a / msun  A synchronous 15 d rotation is rot = 2*pi/15 d =
+!                   4.8483e-6 rad/s.  HEXTOR derives the ORBITAL period from
+!                   a and msun (driver.f:499, w = sqrt(G*msun)*a^-1.5), so the
+!                   pair below is chosen to give exactly 15 d for a 0.12 Msun
+!                   host (typical of a 3000 K M dwarf).  The instellation is
+!                   set independently by solarcon, so a and msun affect only
+!                   the orbital period, not the energy input.
+!   do_longitudinal With this set, the 18 belts are rings of constant angle
+!                   from the SUBSTELLAR point rather than latitude bands, and
+!                   the insolation becomes s = q*cos(theta) on the dayside and
+!                   0 on the night side (driver.f:1314).  This is the
+!                   tidally-locked configuration used for THAI.
+!   snowalb         0.21.  The protocol specifies two-channel albedos weighted
+!                   against the 3000 K spectrum (sea ice 0.65 visible / 0.17
+!                   near-IR).  HEXTOR carries ONE broadband surface albedo, so
+!                   these are combined with the fraction of a 3000 K blackbody
+!                   below 0.7 um (f_vis = 0.083):
+!                       ice  = 0.083*0.65 + 0.917*0.17 = 0.21
+!                       snow = 0.083*0.97 + 0.917*0.46 = 0.50
+!                   Sea ice is the relevant surface on an aquaplanet, so 0.21
+!                   is used; HEXTOR sets icealb = snowalb (driver.f:836).  The
+!                   red-star ice albedo is far below its Earth value (0.40),
+!                   which weakens the ice-albedo feedback — a known and
+!                   physical M-dwarf effect, not a tuning choice.
+!   ocnalb          0.06, held constant.  Note this needs a radiation table
+!                   whose surface-albedo axis reaches open-ocean values; the
+!                   legacy 1 bar tables floored at 0.2.
+!   cloudir         The table is CLEAR SKY, and cloudir is the only cloud
+!                   knob (a uniform offset to OLR).  It is left at 0 by
+!                   default so that the clear-sky result is reported honestly
+!                   rather than tuned per case; see tools/run_samosa.py.
+!   d0 / diffadj    diffadj = .false. and d0 is set PER CASE by the runner as
+!                   d0_ref * pg0, i.e. heat transport scales linearly with
+!                   surface pressure.  HEXTOR's built-in diffadj scaling also
+!                   carries (rot0/rot)^2, which for a 15 d rotator is a factor
+!                   of 225 and is not appropriate here; the pressure scaling
+!                   is applied explicitly instead.  d0_ref is the single most
+!                   important free parameter in this configuration.
+!   heat capacity   constheatcap = .false., so cw = 2.1e8 J/m2/K applies over
+!                   ocean — equivalent to a ~50 m slab, matching the protocol.
+!                   This affects only the approach to equilibrium.
+! ---------------------------------------------------------------------------
+
+ &ebm
+   seasons	= .true.,
+   do_manualseasons = .false.,
+   tempinit     = {tempinit},
+   resfile      = 0,
+   tend		= 7.e11,
+   dt		= 1350,
+   rot		= 4.84813681e-6,
+   a		= 8.783631e11,
+   ecc		= 0.0,
+   peri         = 0.0,
+   obl		= 0.0,
+   d0           = {d0},
+   diffadj      = .false.,
+   pg0          = {pg0},
+   fco2         = 4.0e-4,
+   fh2          = 0.0,
+   ocean	= 1.0,
+   igeog        = 4,
+   constheatcap = .false.,
+   heatcap      = 2.10e8,
+   yrstep       = 1,
+   msun         = 2.38692e32,
+   iterhalt     = .true.,
+   do_longitudinal = .true.,
+   haltonCO2cond = .false.,
+   fluxcnvg      = 0.005 /
+
+ &radiation
+   relsolcon	 = 1.0,
+   solarcon      = {solarcon},
+   radparam      = 3,
+   radfile       = '{radfile}',
+   groundalb	 = 0.21,
+   snowalb       = 0.21,
+   oceanalbconst = .true.,
+   ocnalb        = 0.06,
+   landsnowfrac  = 1.00,
+   cloudir	 = {cloudir},
+   fcloud        = 0.0,
+   cloudalb      = .false.,
+   soladj        = .false.,
+   linalb        = .false.,
+   linrad        = .false. /
+
+ &co2cycle
+   do_cs_cycle  = .false.,
+   outgassing   = 7.0,
+   weathering   = 7.0,
+   betaexp      = 0.50,
+   kact         = 0.09,
+   krun         = 0.045 /
+
+ &h2cycle
+   do_h2_cycle  = .false.,
+   h2outgas     = 1.0e12 /
+
+ &stochastic
+   do_stochastic = .false.,
+   noisevar      = 0.334 /

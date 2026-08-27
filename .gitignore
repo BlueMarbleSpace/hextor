@@ -7,7 +7,9 @@ model/driver
 model/input.nml
 model/data/restart.dat
 model/radiation/radtest
+model/radiation/tabletest
 model/radiation/compare*
 model/radiation/out_*.txt
 experiments*
 namelists/old*
+__pycache__/

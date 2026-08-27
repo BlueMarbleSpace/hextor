@@ -697,9 +697,10 @@ c    of 4.59 Wm^-2.)
       else if ( radparam .eq. 3 ) then
 
         olrval = 0.0
-        !lookup coordinate is the true CO2 mixing ratio, not pCO2 in bar
+        !lookup coordinates are the dry surface pressure in bar and the true
+        !CO2 mixing ratio, not pCO2 in bar
         fco2rad = pco2/pg0
-        call getOLR( fco2rad, temp(k), olrval ) 
+        call getOLR( pg0, fco2rad, temp(k), olrval ) 
         ir(k) = olrval / 1000.
         if ( ir(k) .le. -1. ) then
           print *, "radiation_mod: OLR solution unstable"
@@ -1140,9 +1141,10 @@ c      as = .216
       else if ( radparam .eq. 3 ) then
         zendeg = acos(mu(k))*180./pi
 
-        !lookup coordinate is the true CO2 mixing ratio, not pCO2 in bar
+        !lookup coordinates are the dry surface pressure in bar and the true
+        !CO2 mixing ratio, not pCO2 in bar
         fco2rad = pco2/pg0
-        call getPALB( fco2rad, temp(k), zendeg,
+        call getPALB( pg0, fco2rad, temp(k), zendeg,
      &                surfalb(k), atoa(k) )
 
         if ( atoa(k) .le. -1 ) then

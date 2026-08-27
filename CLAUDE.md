@@ -48,6 +48,29 @@ A radiation module comparison script is at `model/radiation/compare_radiation.py
 
 **THAI Hab1 instellation sweep**: `thai_instellation_sweep.py` (repo root) sweeps `relsolcon` (S/S₀, 0.60–1.42) × 3 initial temperatures (233/273/300 K) using `namelists/input.nml.thai.hab1.calibrated`. Writes `thai_hab1_instellation.csv`. Resume-safe. `plots/thai_iceline_figure.py` reads that CSV and saves `thai_hab1_iceline.png/.pdf` — ice line longitude from substellar vs S/S₀. Ice line longitude (0° = substellar, 90° = terminator, 180° = antistellar): `90° − icelineN` when the ice line is on the dayside (icelineN < 90°); `90° − icelineS` when icelineN = 90 (no dayside ice, use nightside ice line; icelineS is negative so lon > 90°). Sentinel icelineN=90, icelineS=−90 → 180° (truly ice-free); icelineN=0, icelineS=0 → 0° (ice-ball).
 
+**Building a radiation table** (`tools/`, all using ExoColumn at `/models/ExoColumn`):
+
+```bash
+python tools/make_radiation_table.py --dry-run            # grid size + cost estimate
+python tools/make_radiation_table.py --star blackbody_3000K_n68.nc \
+    --out model/radiation/radiation_N2_CO2_3000K_p.h5 --workers 4
+```
+
+Each grid point is an ExoColumn run in `flux_only` + `sweep_mode` on a *prescribed* profile — a moist adiabat from the tabulated surface temperature, not an RCE solution (solving for Ts is the EBM's job). `variable_ps` puts the water vapour on top of the dry pressure, matching SAMOSA's definition of surface pressure. The script is resume-safe (one cache file per pressure × CO2 column) and takes `--pressures/--fco2/--temps` overrides for reduced tables. **Worker count:** this machine is a 6-core Xeon with hyperthreading; throughput saturates near 38 records/s at 3–4 workers and *degrades* beyond (12 workers measured 9 records/s, worse than one process).
+
+Three validation scripts, each answering a question the table's accuracy depends on:
+- `tools/check_table_convergence.py` — vertical resolution and model top. At 10 bar / 360 K, OLR is 255.6 / 253.1 / 252.5 / 252.1 W/m² for 70 / 140 / 200 / 400 layers, so the 200-layer build sits within ~1 W/m² of converged.
+- `tools/check_table_interpolation.py` — grid spacing of the zenith and surface-albedo axes. The curvature is concentrated at the limb, which is why `MU_NODES` is spaced geometrically rather than uniformly (max albedo error 0.011 → 0.003).
+- `tools/check_table_reader.py` — that `radiation.f90` interpolates a table the way its axes say it should, against an independent NumPy implementation (agreement ~1e-11 including clamping and OLR extrapolation).
+
+**SAMOSA intercomparison**: `namelists/input.nml.samosa` is the protocol template (3000 K blackbody, 15 d synchronous, aquaplanet, 400 ppm CO2) and `tools/run_samosa.py` runs the case sequences, each in its own scratch directory:
+
+```bash
+python tools/run_samosa.py --sequence all16 --d0-ref 3.10 --init both
+```
+
+It writes `samosa/samosa_summary.csv` plus a per-case zonal profile in the substellar-angle coordinate. Two configuration choices carry the physics: `d0 = d0_ref × pg0` (heat transport scaling linearly with surface pressure — HEXTOR's own `diffadj` also carries a `(rot0/rot)²` factor worth 225× for a 15 d rotator, which is why it is bypassed), and the broadband surface albedos, which are the protocol's two-channel ice/snow values weighted by the fraction of a 3000 K blackbody below 0.7 µm (f_vis = 0.083 → ice 0.21, snow 0.50, against 0.40/0.71 under the Sun).
+
 There is no traditional test suite; correctness is verified by comparing simulation outputs to known results.
 
 ## Architecture
@@ -68,10 +91,19 @@ All physical parameters are read from Fortran namelists at startup — no recomp
 ### Radiation Module: `model/radiation/radiation.f90`
 
 Provides two public subroutines used by `driver.f`:
-- `getOLR(fco2, tg0, olr)` → outgoing longwave radiation (bilinear interpolation in log-CO2 × T)
-- `getPALB(fco2, tg0, zy, surfalb, palb)` → planetary albedo (quadrilinear interpolation)
+- `getOLR(pdry, fco2, tg0, olr)` → outgoing longwave radiation
+- `getPALB(pdry, fco2, tg0, zy, surfalb, palb)` → planetary albedo
 
-Both query precomputed HDF5 lookup tables indexed by CO2 fraction, temperature, solar zenith angle, and surface albedo. At startup, `radiation_init(radfile)` reads the HDF5 file at `radfile` into two in-memory arrays (`olr_table(nco2,ntmp)` and `palb_table(nco2,ntmp,nzen,nsab)`) indexed directly by grid position. The HDF5 file path is passed as an argument — configurable via `radfile` in the `&radiation` namelist (default: `./radiation/radiation_N2_CO2_Sun.h5`).
+`pdry` is the **dry** surface pressure in bar (pN2 + pCO2 = HEXTOR's `pg0`); `fco2` is the CO2 mixing ratio pCO2/pg0. Both query precomputed HDF5 lookup tables, and `radiation_init(radfile)` auto-detects the format:
+
+- **v2 (pressure-resolved)** — rank-3 `/olr` and rank-5 `/palb` datasets plus explicit axis vectors `/pressure`, `/fco2`, `/temperature`, `/zenith`, `/surfalb`. Grid dimensions are read from the file, so the table can be regridded without recompiling. Interpolation is trilinear (OLR) and pentalinear (albedo), in log10 along the pressure and CO2 axes.
+- **v1 (legacy, 1 bar)** — the original flat row-per-sample datasets on the fixed 92 × 19 (× 4 × 5) grid. Loaded into the same arrays with a single 1 bar pressure level, so there is only one downstream code path and the pressure argument is simply clamped away. Existing namelists and tables keep working unchanged; the rewrite was verified bit-identical to the previous module over 10,976 sample points and on a full pre-industrial Earth run.
+
+**OLR units:** both formats store OLR in mW/m² (W/m² × 1000) — `driver.f` divides by 1000. A v2 table must follow the same convention. Outside the tabulated temperature range OLR is extrapolated by a power law whose exponent is fitted per (pressure, CO2) column from the table's own boundary gradient.
+
+The array index order is the reverse of the axis order, so the fastest-varying axis is innermost in Fortran storage; the HDF5 Fortran interface maps that onto datasets written in natural axis order.
+
+`model/radiation/tabletest.f90` (`make tabletest`) is a standalone probe: it reads a table and answers `pdry fco2 tg0 zenith surfalb` queries on stdin, which is how `tools/check_table_reader.py` checks the Fortran interpolation against an independent implementation.
 
 ### Namelist Configuration
 
