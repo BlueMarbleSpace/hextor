@@ -296,6 +296,16 @@ subroutine fit_extrap_exponents
 
   integer :: i, k
 
+  ! A freshly generated table can carry a failed grid point as a non-finite
+  ! value, and the fit below would turn that into a silent NaN exponent that
+  ! only shows up later as strange climate.  Refuse the table instead.
+  if ( any( olr_table  .ne. olr_table  ) .or. any( olr_table .le. 0.0 ) .or.  &
+       any( palb_table .ne. palb_table ) ) then
+    write(*,*) "radiation_init: table contains non-finite or non-positive ", &
+               "values -- check it with tools/check_table_sanity.py"
+    stop
+  end if
+
   allocate( n_eff_upper(nco2, npre) )
   allocate( n_eff_lower(nco2, npre) )
 
