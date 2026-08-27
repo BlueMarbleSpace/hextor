@@ -3,7 +3,7 @@
 ! (Sparse Atmospheric MOdel Sampling Analysis; Haqq-Misra et al. 2022, PSJ 3,
 ! 260 — a CUISINES model intercomparison project).
 !
-! This is a TEMPLATE: tools/run_samosa.py fills the {braced} fields for each
+! This is a TEMPLATE: tools/run_samosa.py fills the placeholder fields for each
 ! of the protocol's cases and writes the result to input.nml.  The values that
 ! are NOT braced are the protocol's fixed parameters (Table 2) plus the
 ! HEXTOR-specific choices documented below.

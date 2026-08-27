@@ -107,7 +107,25 @@ def parse_zonal(model_out):
     return rows
 
 
-def parse_scalars(rundir):
+def belt_area_weights(coords_deg, nbelts=18):
+    """Fractional area of each HEXTOR belt.
+
+    The belts are equally spaced in the coordinate, NOT in area
+    (driver.f:376, 490): a belt centred at c spans sin(c + pi/2n) - sin(c -
+    pi/2n).  Unweighted means over the 18 belts would over-weight the poles —
+    or, in the tidally-locked coordinate, the substellar and antistellar
+    points.  The same expression serves both readings, since x = sin(lat) is
+    reinterpreted as cos(angle from substellar).
+    """
+    import math
+    half = math.pi / (2 * nbelts)
+    w = [abs(math.sin(math.radians(c) + half) - math.sin(math.radians(c) - half))
+         for c in coords_deg]
+    tot = sum(w)
+    return [x / tot for x in w]
+
+
+def parse_scalars(rundir, stdout=''):
     """Global diagnostics from tempseries.out, icelines.out and model.out."""
     out = {}
     ts = os.path.join(rundir, 'out', 'tempseries.out')
@@ -121,6 +139,16 @@ def parse_scalars(rundir):
                 out['pco2'] = float(p[3])
                 out['q'] = float(p[6])
                 out['d'] = float(p[7])
+            # HEXTOR halts on the year-to-year change in global OLR, which is
+            # a false positive on the runaway-greenhouse plateau: there OLR is
+            # genuinely insensitive to surface temperature, so it can go flat
+            # while the temperature is still climbing.  Record the temperature
+            # trend over the final years so that case can be recognised rather
+            # than reported as an equilibrium.
+            tail = [float(l.split()[1]) for l in lines[-11:] if len(l.split()) >= 2]
+            if len(tail) >= 2:
+                out['dT_last'] = tail[-1] - tail[0]
+                out['n_years'] = len(lines)
     il = os.path.join(rundir, 'out', 'icelines.out')
     if os.path.exists(il):
         lines = [l for l in open(il) if l.strip()]
@@ -129,14 +157,12 @@ def parse_scalars(rundir):
             if len(p) >= 3:
                 out['icelineS'] = float(p[1])
                 out['icelineN'] = float(p[2])
-    mo = os.path.join(rundir, 'out', 'model.out')
-    if os.path.exists(mo):
-        txt = open(mo).read()
-        m = re.search(r'Flux converged at year\s+([0-9.Ee+-]+)', txt)
-        out['converged'] = bool(m)
-        m = re.search(r'\(dOLR =\s*\n?\s*([0-9.Ee+-]+)', txt)
-        if m:
-            out['dOLR'] = float(m.group(1))
+    # The flux-convergence message goes to stdout, not model.out.
+    m = re.search(r'Flux converged at year\s+([0-9.Ee+-]+)', stdout)
+    out['converged'] = bool(m)
+    m = re.search(r'dOLR =\s*\n?\s*([0-9.Ee+-]+)', stdout)
+    if m:
+        out['dOLR'] = float(m.group(1))
     return out
 
 
@@ -176,21 +202,25 @@ def run_case(task):
         f.write(nml)
 
     t0 = time.time()
+    stdout = ''
     try:
         res = subprocess.run(['./driver'], cwd=rundir, capture_output=True,
                              text=True, timeout=7200)
         rc = res.returncode
-        err = '' if rc == 0 else (res.stderr or res.stdout or '')[-300:].replace('\n', ' ')
+        stdout = res.stdout or ''
+        err = '' if rc == 0 else (res.stderr or stdout)[-300:].replace('\n', ' ')
     except subprocess.TimeoutExpired:
         rc, err = -1, 'timeout'
 
     rec = {'case': sample, 'init': init_name, 'instellation': inst,
            'ps_bar': ps, 'd0': d0, 'cloudir': cloudir,
            'rc': rc, 'error': err, 'wall_s': round(time.time() - t0, 1)}
-    rec.update(parse_scalars(rundir))
+    rec.update(parse_scalars(rundir, stdout))
 
     zonal = parse_zonal(os.path.join(rundir, 'out', 'model.out'))
     if zonal:
+        # Report from substellar outward.
+        zonal.sort(key=lambda r: -r[0])
         with open(os.path.join(rundir, 'zonal.txt'), 'w') as f:
             f.write('# HEXTOR / SAMOSA case %d (%s start)\n' % (sample, init_name))
             f.write('# instellation = %.1f W/m2   surface pressure = %.3f bar\n'
@@ -202,10 +232,13 @@ def run_case(task):
             for r in zonal:
                 f.write('%7.1f %9.3f %9.3f %9.3f %9.4f %10.3f %10.3f\n'
                         % (90.0 - r[0], r[1], r[2], r[4], r[6], r[7], r[8]))
+        w = belt_area_weights([r[0] for r in zonal])
         rec['T_min'] = min(r[1] for r in zonal)
         rec['T_max'] = max(r[1] for r in zonal)
-        rec['OLR_global'] = sum(r[7] for r in zonal) / len(zonal)
-        rec['ASR_global'] = sum(r[8] for r in zonal) / len(zonal)
+        rec['OLR_global'] = sum(wi * r[7] for wi, r in zip(w, zonal))
+        rec['ASR_global'] = sum(wi * r[8] for wi, r in zip(w, zonal))
+        # What the protocol asks models to drive toward +-1 W/m2.
+        rec['TOA_imbalance'] = rec['ASR_global'] - rec['OLR_global']
 
     rec['iceline_lon'] = substellar_longitude(rec.get('icelineN'),
                                               rec.get('icelineS'))
@@ -273,6 +306,7 @@ def main():
     results.sort(key=lambda r: (r['case'], r['init']))
     cols = ['case', 'init', 'instellation', 'ps_bar', 'd0', 'cloudir',
             'T_global', 'T_min', 'T_max', 'OLR_global', 'ASR_global',
+            'TOA_imbalance', 'dT_last', 'n_years',
             'icelineN', 'icelineS', 'iceline_lon', 'converged', 'dOLR',
             'wall_s', 'rc', 'error']
     path = os.path.join(args.outdir, 'samosa_summary.csv')

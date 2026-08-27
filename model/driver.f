@@ -321,12 +321,16 @@ c SET UP INITIAL TEMPERATURE PROFILE
           pn2 = 0.0
           fh2 = 1.-fco2
         else 
-          pn2 = 1.0
+          ! pg0 from the namelist is the total DRY surface pressure, which is
+          ! also the pressure coordinate of the v2 lookup tables.  This used to
+          ! read pn2 = 1.0 / pg0 = pn2 + pco2, pinning every radparam=3 run to
+          ! a 1 bar N2 background regardless of the namelist -- correct for the
+          ! legacy tables, which were computed for exactly that, but it would
+          ! render a pressure-resolved table inert.  For a 1 bar case the two
+          ! differ only in whether pCO2 sits inside or on top of the bar
+          ! (pg0 = 1.0 vs 1 + pCO2, i.e. 0.03% at pre-industrial CO2).
           pco2 = pg0*fco2
-          pg0 = pn2 + pco2
-          !pco2 = pg0*fco2
-          !ph2 = pg0*fh2
-          !pn2 = pg0
+          pn2  = pg0 - pco2
         end if
         call radiation_init( radfile )
 
