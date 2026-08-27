@@ -11,5 +11,6 @@ model/radiation/tabletest
 model/radiation/compare*
 model/radiation/out_*.txt
 experiments*
+samosa/
 namelists/old*
 __pycache__/
