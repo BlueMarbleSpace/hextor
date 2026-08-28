@@ -9,7 +9,11 @@ checks the properties the physics guarantees, and flags â€” rather than fails â€
 the ones that have legitimate exceptions:
 
   hard   finite everywhere; OLR > 0; planetary albedo in [0, 1]
-  hard   OLR rises with surface temperature at fixed (p, fCO2)
+  hard   OLR rises with surface temperature at fixed (p, fCO2) BELOW the
+         runaway plateau.  Above it, OLR asymptotes to the Simpson-Nakajima
+         limit and wobbles by ~1 W/m^2 either way; that is the runaway
+         greenhouse, not an error, so only decreases well below a column's own
+         maximum OLR are treated as defects.
   hard   planetary albedo rises with surface albedo
   soft   OLR falls with CO2 (broken where CO2 condenses out of the profile)
   soft   OLR falls with surface pressure (pressure broadening; weakest, and
@@ -73,21 +77,47 @@ def main():
     failed |= report('planetary albedo in [0, 1]',
                      int(np.sum((palb < 0) | (palb > 1))), palb.size, True)
 
+    # A column is "on the plateau" where its OLR is within PLATEAU_TOL of that
+    # column's own maximum; there dOLR/dT -> 0 by construction and the sign of
+    # the residual carries no information.
+    PLATEAU_TOL = 10.0    # W/m^2
     d = np.diff(olr, axis=2)
-    bad = np.argwhere(d <= 0)
+    colmax = olr.max(axis=2)[:, :, None]
+    on_plateau = (olr[:, :, :-1] > colmax - PLATEAU_TOL)
+    bad = np.argwhere((d <= 0) & ~on_plateau)
     ex = ['p=%.3g fco2=%.3g between T=%.0f and %.0f: %.2f -> %.2f W/m2'
           % (pre[i], fc[j], tm[k], tm[k + 1], olr[i, j, k], olr[i, j, k + 1])
           for i, j, k in bad[:3]]
-    failed |= report('OLR increases with surface temperature',
-                     len(bad), d.size, True, ex)
+    failed |= report('OLR increases with T below the runaway plateau',
+                     len(bad), int(np.sum(~on_plateau)), True, ex)
+    npl = int(np.sum((d <= 0) & on_plateau))
+    print('  [stat] %-52s %d, max %.2f W/m2 per step'
+          % ('OLR dips on the runaway plateau (expected)', npl,
+             -d[(d <= 0) & on_plateau].min() if npl else 0.0))
+
+    # Where the plateau sets in, as a function of pressure: the physics SAMOSA
+    # is probing, and a quick way to see the table is resolving it.
+    print()
+    ic = int(np.argmin(np.abs(fc - 4.0e-4)))
+    print('  runaway plateau at fCO2 = %.1e (OLR within %.0f W/m2 of the '
+          'column maximum):' % (fc[ic], PLATEAU_TOL))
+    for i in range(0, len(pre), max(1, len(pre) // 6)):
+        col = olr[i, ic, :]
+        hit = np.argmax(col > col.max() - PLATEAU_TOL)
+        print('    p = %6.2f bar : from Ts = %3.0f K, OLR -> %.1f W/m2'
+              % (pre[i], tm[hit], col.max()))
 
     d = np.diff(palb, axis=4)
     failed |= report('planetary albedo increases with surface albedo',
                      int(np.sum(d < -1e-12)), d.size, True)
 
     # ---- soft checks --------------------------------------------------------
+    # Tolerance: in the cold isothermal columns (t_strato = min(200 K, Ts), so
+    # the atmosphere is at the surface temperature) there is no greenhouse
+    # effect at all and OLR is independent of composition to rounding.
+    TOL = 0.01   # W/m^2
     d = np.diff(olr, axis=1)
-    bad = np.argwhere(d > 0)
+    bad = np.argwhere(d > TOL)
     ex = ['p=%.3g T=%.0f between fco2=%.2e and %.2e: %.2f -> %.2f W/m2'
           % (pre[i], tm[k], fc[j], fc[j + 1], olr[i, j, k], olr[i, j + 1, k])
           for i, j, k in bad[:3]]
@@ -95,7 +125,7 @@ def main():
            len(bad), d.size, False, ex)
 
     d = np.diff(olr, axis=0)
-    bad = np.argwhere(d > 0)
+    bad = np.argwhere(d > TOL)
     ex = ['fco2=%.2e T=%.0f between p=%.3g and %.3g bar: %.2f -> %.2f W/m2'
           % (fc[j], tm[k], pre[i], pre[i + 1], olr[i, j, k], olr[i + 1, j, k])
           for i, j, k in bad[:3]]
