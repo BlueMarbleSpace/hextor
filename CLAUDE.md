@@ -62,6 +62,9 @@ Three validation scripts, each answering a question the table's accuracy depends
 - `tools/check_table_convergence.py` — vertical resolution and model top. At 10 bar / 360 K, OLR is 255.6 / 253.1 / 252.5 / 252.1 W/m² for 70 / 140 / 200 / 400 layers, so the 200-layer build sits within ~1 W/m² of converged.
 - `tools/check_table_interpolation.py` — grid spacing of the zenith and surface-albedo axes. The curvature is concentrated at the limb, which is why `MU_NODES` is spaced geometrically rather than uniformly (max albedo error 0.011 → 0.003).
 - `tools/check_table_reader.py` — that `radiation.f90` interpolates a table the way its axes say it should, against an independent NumPy implementation (agreement ~1e-11 including clamping and OLR extrapolation).
+- `tools/check_table_sanity.py` — physical checks on a finished table plus an inspection figure. Note the OLR-versus-temperature check applies only *below* the runaway plateau: the table saturates near 292 W/m² (Simpson-Nakajima), above which OLR wobbles ~1 W/m² either way. That plateau is why `n_eff_upper` is floored at zero in `radiation.f90` — half the columns otherwise fit a negative exponent and extrapolate OLR *downward* as the model heats.
+
+**Re-calibrating after a table change** (`tools/calibrate_thai.py`): the published `(d0, cloudir) = (3.10, −35.0)` was fitted against the old 1 bar 2600 K table, so part of that −35 W/m² compensates for that table rather than for clouds. Re-running the published procedure against a BT-Settl 2600 K table built with ExoRT gives `(3.33, −45.0)` and fits the THAI ensemble day-night contrast six times better (0.7 K error against 4.3 K). Consistency with a published calibration means re-running its *procedure*, not transplanting its constants onto different radiative transfer.
 
 **SAMOSA intercomparison**: `namelists/input.nml.samosa` is the protocol template (3000 K blackbody, 15 d synchronous, aquaplanet, 400 ppm CO2) and `tools/run_samosa.py` runs the case sequences, each in its own scratch directory:
 
@@ -69,7 +72,21 @@ Three validation scripts, each answering a question the table's accuracy depends
 python tools/run_samosa.py --sequence all16 --d0-ref 3.10 --init both
 ```
 
-It writes `samosa/samosa_summary.csv` plus a per-case zonal profile in the substellar-angle coordinate. Two configuration choices carry the physics: `d0 = d0_ref × pg0` (heat transport scaling linearly with surface pressure — HEXTOR's own `diffadj` also carries a `(rot0/rot)²` factor worth 225× for a 15 d rotator, which is why it is bypassed), and the broadband surface albedos, which are the protocol's two-channel ice/snow values weighted by the fraction of a 3000 K blackbody below 0.7 µm (f_vis = 0.083 → ice 0.21, snow 0.50, against 0.40/0.71 under the Sun).
+It writes `samosa/samosa_summary.csv` plus a per-case zonal profile in the substellar-angle coordinate, and labels each outcome `equilibrium` / `drifting` / `runaway` — HEXTOR's own `converged` flag halts on the year-to-year change in global OLR, which is a false positive on the runaway plateau where OLR is insensitive to surface temperature.
+
+**Heat transport** is selected with `--transport`, and the three options are calibrated (`tools/calibrate_thai.py`) to the same effective D ≈ 3.3 at THAI Hab1, so they are indistinguishable there and differ only in how that is carried across the SAMOSA parameter space:
+
+| `--transport` | D | at 0.1 → 10 bar (15 d rotation) |
+|---|---|---|
+| `constant` | `d0` | 3.33 everywhere |
+| `perbar` | `d0 · p · comp` | 0.33 → 33 |
+| `diffadj` | `d0 · p · comp · (rot0/rot)²` | 2.0 → 197 |
+
+`diffadj_rot` (new, `&ebm`, default `.true.` = published behaviour) gates just the rotation factor, so the pressure and composition scaling can be kept without it. The rotation term is 37× for TRAPPIST-1e but 225× for a 15 d rotator, so a `d0` calibrated for one rotator moves the transport by that ratio when carried to another. `tools/samosa_sensitivity.py` sweeps all three against a range of `cloudir`.
+
+**Timestep and diffusion stability:** HEXTOR integrates the diffusion term explicitly on 18 belts in x = sin(lat), so it needs `D·dt/(C·dx²)` below about ½. At the published `dt = 1350 s` that is 0.9 for `perbar` at 10 bar and 5.4 for `diffadj`, and exceeding it does not raise an error — the model integrates quietly to NaN over thousands of years. The same case gives NaN at 1350 s, 289.34 K at 400 s and 289.35 K at 135 s. `run_samosa.py` therefore sets `dt` per case from that limit, capped at 1350 s. **Any run with D much above ~3 needs the timestep reduced.**
+
+The broadband surface albedos are the protocol's two-channel ice/snow values weighted by the fraction of a 3000 K blackbody below 0.7 µm (f_vis = 0.083 → ice 0.21, snow 0.50, against 0.40/0.71 under the Sun).
 
 There is no traditional test suite; correctness is verified by comparing simulation outputs to known results.
 

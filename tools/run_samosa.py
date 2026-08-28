@@ -72,6 +72,51 @@ SEQUENCES = {
 INITS = {'warm': 300.0, 'cold': 233.0}
 
 
+# Diffusion stability, matching how driver.f discretises: 18 belts in
+# x = sin(lat), explicit in time, heat capacity C.
+NBELTS = 18
+HEATCAP = 4.0e6          # &ebm::heatcap in the SAMOSA template
+DT_PUBLISHED = 1350.0    # the published THAI timestep
+CFL_SAFETY = 0.4         # explicit diffusion needs D*dt/(C*dx^2) below ~1/2
+
+
+# How heat transport is allowed to depend on the case.  All four are
+# calibrated to the SAME effective D at THAI Hab1 (1 bar), so they differ only
+# in how that is carried across the SAMOSA parameter space.
+TRANSPORT = {
+    # D = d0, identical in every case.  diffadj = .false. means the driver
+    # uses d0 literally (driver.f:504), so this is what that flag alone gives.
+    'constant': dict(diffadj=False, scale_by_p=False, rot=False),
+    # D = d0 * p.  Pressure scaling applied by this script.
+    'perbar': dict(diffadj=True, scale_by_p=False, rot=False),
+    # D = d0 * p * composition * (rot0/rot)^2, HEXTOR's full scaling.
+    'diffadj': dict(diffadj=True, scale_by_p=False, rot=True),
+}
+
+
+def effective_D(d0_ref, ps, diffadj, rot_scaling, fco2=4.0e-4,
+                rot=4.84813681e-6, rot0=7.27e-5):
+    """The diffusion coefficient the driver will end up using."""
+    if not diffadj:
+        return d0_ref
+    pco2 = ps * fco2
+    pn2 = ps - pco2
+    avemol = (28.0 * pn2 + 44.0 * pco2) / ps
+    hcp = (0.2484 * pn2 + 0.2105 * pco2) / ps
+    d = d0_ref * ps * (28.89 / avemol) ** 2 * (hcp / 0.2401)
+    if rot_scaling:
+        d *= (rot0 / rot) ** 2
+    return d
+
+
+def stable_dt(D):
+    """Timestep satisfying the explicit-diffusion limit, capped at published."""
+    dx = 2.0 / NBELTS
+    if D <= 0:
+        return DT_PUBLISHED
+    return min(DT_PUBLISHED, CFL_SAFETY * HEATCAP * dx * dx / D)
+
+
 def prepare_rundir(rundir):
     """A HEXTOR run directory: the driver plus the relative paths it opens."""
     os.makedirs(os.path.join(rundir, 'out'), exist_ok=True)
@@ -185,19 +230,26 @@ def substellar_longitude(iceline_n, iceline_s):
 
 
 def run_case(task):
-    sample, inst, ps, init_name, init_t, d0_ref, cloudir, table, outdir = task
+    (sample, inst, ps, init_name, init_t, d0_ref, cloudir, table, outdir,
+     diffadj, rot_scaling) = task
 
     tag = 'case_%02d_%s' % (sample, init_name)
     rundir = os.path.join(outdir, tag)
     prepare_rundir(rundir)
 
-    # Heat transport scales with surface pressure; see the template's notes on
-    # why HEXTOR's built-in diffadj is not used for a slow synchronous rotator.
-    d0 = d0_ref * ps
+    # With diffadj the driver applies the pressure scaling itself (along with
+    # the composition and rotation factors), so d0 is passed through as the
+    # reference value; without it the runner does the pressure scaling here.
+    d0 = d0_ref
+    D = effective_D(d0_ref, ps, diffadj, rot_scaling)
+    dt = stable_dt(D)
 
     nml = open(TEMPLATE).read().format(
-        tempinit='%.1f' % init_t, d0='%.5f' % d0, pg0='%.5f' % ps,
-        solarcon='%.1f' % inst, cloudir='%.2f' % cloudir, radfile=table)
+        tempinit='%.1f' % init_t, d0='%.6f' % d0, pg0='%.5f' % ps,
+        solarcon='%.1f' % inst, cloudir='%.2f' % cloudir, radfile=table,
+        diffadj='.true.' if diffadj else '.false.',
+        diffadj_rot='.true.' if rot_scaling else '.false.',
+        dt='%.1f' % dt)
     with open(os.path.join(rundir, 'input.nml'), 'w') as f:
         f.write(nml)
 
@@ -213,7 +265,8 @@ def run_case(task):
         rc, err = -1, 'timeout'
 
     rec = {'case': sample, 'init': init_name, 'instellation': inst,
-           'ps_bar': ps, 'd0': d0, 'cloudir': cloudir,
+           'ps_bar': ps, 'd0': d0, 'cloudir': cloudir, 'diffadj': diffadj,
+           'rot_scaling': rot_scaling, 'D': D, 'dt': dt,
            'rc': rc, 'error': err, 'wall_s': round(time.time() - t0, 1)}
     rec.update(parse_scalars(rundir, stdout))
 
@@ -320,10 +373,17 @@ def main():
     ap.add_argument('--table', default=DEFAULT_TABLE,
                     help='radiation table, as the driver sees it (relative to '
                          'the run directory)')
+    ap.add_argument('--transport', default='perbar', choices=sorted(TRANSPORT),
+                    help="how D varies across the parameter space: 'constant' "
+                         "(D = d0 everywhere), 'perbar' (D = d0 * p * "
+                         "composition, no rotation term), or 'diffadj' "
+                         "(HEXTOR's full scaling, including (rot0/rot)^2). All "
+                         "are calibrated to the same D at THAI Hab1.")
     ap.add_argument('--outdir', default=os.path.join(HEXTOR, 'samosa'))
     ap.add_argument('--workers', type=int, default=8)
     args = ap.parse_args()
 
+    mode = TRANSPORT[args.transport]
     samples = SEQUENCES[args.sequence]
     known = {c[0]: c for c in CASES}
     missing = [s for s in samples if s not in known]
@@ -340,12 +400,17 @@ def main():
         _, inst, ps = known[s]
         for init_name in inits:
             tasks.append((s, inst, ps, init_name, INITS[init_name],
-                          args.d0_ref, args.cloudir, args.table, args.outdir))
+                          args.d0_ref, args.cloudir, args.table, args.outdir,
+                          mode['diffadj'], mode['rot']))
 
     print('SAMOSA sequence %s: %d cases x %d start(s) = %d runs'
           % (args.sequence, len(samples), len(inits), len(tasks)))
-    print('  d0 = %.3f * ps    cloudir = %.2f W/m2    table = %s'
-          % (args.d0_ref, args.cloudir, args.table))
+    desc = {'constant': 'D = %.4f (constant)' % args.d0_ref,
+            'perbar': 'D = %.4f * p * comp' % args.d0_ref,
+            'diffadj': 'D = %.5f * p * comp * (rot0/rot)^2' % args.d0_ref}
+    print('  transport: %-42s cloudir = %.2f W/m2'
+          % (desc[args.transport], args.cloudir))
+    print('  table    : %s' % args.table)
     print()
 
     results = []
@@ -368,7 +433,8 @@ def main():
     results.sort(key=lambda r: (r['case'], r['init']))
     cols = ['case', 'init', 'instellation', 'ps_bar', 'd0', 'cloudir',
             'T_global', 'T_min', 'T_max', 'OLR_global', 'ASR_global',
-            'TOA_imbalance', 'dT_last', 'n_years', 'state',
+            'TOA_imbalance', 'dT_last', 'n_years', 'state', 'diffadj',
+            'rot_scaling', 'D', 'dt',
             'icelineN', 'icelineS', 'iceline_lon', 'converged', 'dOLR',
             'wall_s', 'rc', 'error']
     path = os.path.join(args.outdir, 'samosa_summary.csv')

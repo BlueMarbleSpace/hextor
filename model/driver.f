@@ -116,6 +116,7 @@ c----------------------------------------------------------------------c
       logical do_longitudinal, do_manualseasons, do_gough, do_marshist
       logical fillet, do_dailyoutput, do_futuresol, do_bioprod
       logical haltonCO2cond
+      logical diffadj_rot
       real landsnowfrac, RAND, boxmuller, noisevar, heatcap, ocnalb
       real outgassing, weathering, betaexp, kact, krun, q0
       real pg0, ir2, fh2, co2sat, h2escape, ph2, ncolh2, h2outgas
@@ -139,7 +140,7 @@ c----------------------------------------------------------------------c
 
       NAMELIST /ebm/ seasons, tend, dt, rot, a, ecc, peri,
      &               obl, ocean, igeog, yrstep, resfile, d0,
-     &               constheatcap, heatcap, diffadj,
+     &               constheatcap, heatcap, diffadj, diffadj_rot,
      &               iterhalt, fco2, fh2, pg0, tempinit, msun,
      &               do_longitudinal, do_manualseasons,
      &               cl, cw, ci, do_dailyoutput, fillet,
@@ -218,6 +219,7 @@ c  INITIALIZE VARIABLES
       linalb = .false.   ! set .true. for constant TOA albedo
       constheatcap = .false. ! set .true. for constant heat capacity
       diffadj = .true.  ! set .false. to turn off diffusion parameter adjustment
+      diffadj_rot = .true. ! set .false. to drop the (rot0/rot)^2 term from diffadj
       cloudalb = .true. ! set .false. to disable cloud albedo
       iterhalt = .false.  ! set .true. to enable halt based on iterations
       fluxcnvg = 0.1      ! OLR convergence threshold (W/m²) for iterhalt mode
@@ -1606,8 +1608,17 @@ c  ADJUST DIFFUSION COEFFICIENT
       hcp = (hcpn2*pn2 + pco2*hcpco2 + hcph2*ph2)/(pg0)
 
       if ( diffadj ) then
-      d = d0*(pg0)*((avemol0/avemol)**2)*(hcp/hcp0)*  
-     &   (rot0/rot)**2
+c  The three factors are independent, and it is sometimes right to want only
+c  some of them.  Pressure and composition follow from the atmosphere itself.
+c  The rotation term (Williams & Kasting 1997: slower rotation -> weaker
+c  Coriolis -> more efficient transport) instead depends on the planet's spin,
+c  and it is large for slow rotators -- 37 for a 6.1 day period, 225 for 15
+c  days -- so calibrating d0 for one rotator and carrying it to another moves
+c  the transport by that ratio.  diffadj_rot = .false. keeps the pressure and
+c  composition scaling and drops the rotation factor.  The default .true. is
+c  the published behaviour.
+      d = d0*(pg0)*((avemol0/avemol)**2)*(hcp/hcp0)
+      if ( diffadj_rot ) d = d*(rot0/rot)**2
 !        print *, hcp 
 c-nb  
       do k = 1, nbelts, 1

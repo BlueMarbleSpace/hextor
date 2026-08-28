@@ -59,13 +59,39 @@
 !                   compensates for that table's biases rather than for
 !                   clouds, and none of it was fitted over 0.1-10 bar or
 !                   400-2400 W/m2.
-!   d0 / diffadj    diffadj = .false. and d0 is set PER CASE by the runner as
-!                   d0_ref * pg0, i.e. heat transport scales linearly with
-!                   surface pressure.  HEXTOR's built-in diffadj scaling also
-!                   carries (rot0/rot)^2, which for a 15 d rotator is a factor
-!                   of 225 and is not appropriate here; the pressure scaling
-!                   is applied explicitly instead.  d0_ref is the single most
-!                   important free parameter in this configuration.
+!   d0 / diffadj    Two ways to make heat transport scale with pressure, both
+!                   supported by tools/run_samosa.py:
+!                     --no-diffadj (default): diffadj = .false. and the runner
+!                       sets d0 = d0_ref * pg0 per case.  Transport per bar is
+!                       carried over from the THAI calibration unchanged.
+!                     --diffadj: HEXTOR's own scaling (driver.f:1603),
+!                       d = d0 * pg0 * (avemol0/avemol)^2 * (hcp/hcp0) *
+!                       (rot0/rot)^2.  Same linear pressure dependence, ~1.10
+!                       from composition, and a ROTATION factor of 37 for
+!                       TRAPPIST-1e but 225 for a 15 d rotator.  Calibrating
+!                       d0 at THAI and transferring it therefore gives ~6x more
+!                       transport here than the first option.  The rotation
+!                       term is standard EBM physics (slower rotation, weaker
+!                       Coriolis, more efficient transport), so which option is
+!                       right is a physical question, not a bookkeeping one.
+!                     --diffadj --no-rot-scaling: diffadj = .true. with
+!                       diffadj_rot = .false., i.e. keep the pressure and
+!                       composition scaling and drop the rotation factor.
+!                       With SAMOSA's fixed composition this reproduces the
+!                       first option exactly, but it expresses the choice
+!                       through the model rather than by pre-multiplying d0,
+!                       and it differs whenever composition varies.
+!                   Either way d0_ref is the single most important free
+!                   parameter in this configuration.
+!   dt              Set PER CASE by the runner from a diffusion stability
+!                   limit, capped at the published 1350 s.  HEXTOR integrates
+!                   the diffusion term explicitly on 18 belts in x = sin(lat),
+!                   so it needs D*dt/(C*dx^2) below ~1/2.  At 1350 s that is
+!                   0.9 for the fixed transport at 10 bar and 5.4 for the
+!                   rotation-scaled transport, and the latter silently
+!                   integrates to NaN after 5000 years rather than failing.
+!                   Verified: the same case gives NaN at 1350 s, 289.34 K at
+!                   400 s and 289.35 K at 135 s.
 !   heat capacity   constheatcap = .true. with heatcap = 4.00e6, the published
 !                   TRAPPIST-1 value.  The protocol specifies a 50 m slab
 !                   (2.1e8 J/m2/K), but heat capacity sets only the approach to
@@ -79,14 +105,15 @@
    tempinit     = {tempinit},
    resfile      = 0,
    tend		= 7.e11,
-   dt		= 1350,
+   dt		= {dt},
    rot		= 4.84813681e-6,
    a		= 8.783631e11,
    ecc		= 0.0,
    peri         = 0.0,
    obl		= 0.0,
    d0           = {d0},
-   diffadj      = .false.,
+   diffadj      = {diffadj},
+   diffadj_rot  = {diffadj_rot},
    pg0          = {pg0},
    fco2         = 4.0e-4,
    fh2          = 0.0,

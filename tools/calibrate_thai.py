@@ -57,19 +57,21 @@ def prepare_rundir(rundir):
             os.symlink(target, link)
 
 
-def patch_nml(text, d0, cloudir, table):
+def patch_nml(text, d0, cloudir, table, diffadj=False):
     text = re.sub(r'([ \t]+d0[ \t]*=[ \t]*)[\d.eE+-]+', r'\g<1>%s' % d0, text)
     text = re.sub(r'([ \t]*cloudir[ \t]*=[ \t]*)[-\d.eE+]+', r'\g<1>%s' % cloudir, text)
     text = re.sub(r"([ \t]*radfile[ \t]*=[ \t]*)'[^']*'", r"\g<1>'%s'" % table, text)
+    text = re.sub(r'([ \t]*diffadj[ \t]*=[ \t]*)\.\w+\.',
+                  r'\g<1>%s' % ('.true.' if diffadj else '.false.'), text)
     return text
 
 
 def run_one(task):
-    d0, cloudir, table, work = task
-    rundir = os.path.join(work, 'd%.3f_c%+.1f' % (d0, cloudir))
+    d0, cloudir, table, work, diffadj = task
+    rundir = os.path.join(work, 'd%.5f_c%+.1f' % (d0, cloudir))
     prepare_rundir(rundir)
     with open(TEMPLATE) as f:
-        text = patch_nml(f.read(), d0, cloudir, table)
+        text = patch_nml(f.read(), d0, cloudir, table, diffadj)
     with open(os.path.join(rundir, 'input.nml'), 'w') as f:
         f.write(text)
 
@@ -132,7 +134,17 @@ def main():
     ap.add_argument('--work', default=None, help='scratch directory')
     ap.add_argument('--out', default=None, help='CSV of every sweep point')
     ap.add_argument('--workers', type=int, default=4)
+    ap.add_argument('--diffadj', action='store_true',
+                    help="calibrate with HEXTOR's own diffusion scaling on, so "
+                         "d0 is the reference value before the pressure, "
+                         "composition and rotation factors")
+    ap.add_argument('--d0-sweep', default=None,
+                    help='comma-separated d0 values overriding the default grid')
     args = ap.parse_args()
+
+    global D0_SWEEP
+    if args.d0_sweep:
+        D0_SWEEP = [float(x) for x in args.d0_sweep.split(',')]
 
     work = args.work or os.path.join('/tmp/claude-1000/-hugespace-models-hextor/'
                                      '380c2fc7-6424-4334-8480-5cc50da5b2ff/'
@@ -143,11 +155,14 @@ def main():
     print('THAI Hab1 calibration against %s' % args.table)
     print('  targets: global %.1f K   antistellar %.1f K   substellar %.1f K'
           '   contrast %.1f K' % (TARGET, TARGET_MIN, TARGET_MAX, TARGET_CONTRAST))
+    print('  diffadj: %s' % ('.true. (driver applies pressure x composition '
+                              'x rotation)' if args.diffadj else '.false.'))
     print('  sweep  : %d d0 x %d cloudir = %d runs'
           % (len(D0_SWEEP), len(CLOUDIR_SWEEP), len(D0_SWEEP) * len(CLOUDIR_SWEEP)))
     print()
 
-    tasks = [(d, c, args.table, work) for c in CLOUDIR_SWEEP for d in D0_SWEEP]
+    tasks = [(d, c, args.table, work, args.diffadj)
+             for c in CLOUDIR_SWEEP for d in D0_SWEEP]
     results = []
     with Pool(args.workers) as pool:
         for r in pool.imap_unordered(run_one, tasks):
@@ -175,7 +190,7 @@ def main():
             print('%9.1f %9s   target not bracketed (T range %.1f-%.1f K)'
                   % (c, '-', np.nanmin(Ts), np.nanmax(Ts)))
             continue
-        verify.append((d0star, c, args.table, work))
+        verify.append((d0star, c, args.table, work, args.diffadj))
         curve.append((c, d0star))
 
     if verify:
@@ -185,7 +200,7 @@ def main():
         best = None
         for d0, c, T, tmin, tmax in vres:
             contrast = tmax - tmin
-            print('%9.1f %9.3f %9.2f %9.2f %9.2f %10.2f'
+            print('%9.1f %9.5f %9.2f %9.2f %9.2f %10.2f'
                   % (c, d0, T, tmin, tmax, contrast))
             if best is None or abs(contrast - TARGET_CONTRAST) < abs(best[5] - TARGET_CONTRAST):
                 best = (c, d0, T, tmin, tmax, contrast)
@@ -195,7 +210,7 @@ def main():
         if best:
             print()
             print('best match on day-night contrast:')
-            print('   cloudir = %.1f W/m2   d0 = %.3f' % (best[0], best[1]))
+            print('   cloudir = %.1f W/m2   d0 = %.5f' % (best[0], best[1]))
             print('   T_global = %.2f K (target %.1f)   contrast = %.2f K (target %.1f)'
                   % (best[2], TARGET, best[5], TARGET_CONTRAST))
     return 0
