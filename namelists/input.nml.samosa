@@ -83,6 +83,12 @@
 !                       and it differs whenever composition varies.
 !                   Either way d0_ref is the single most important free
 !                   parameter in this configuration.
+!   tend            Set by the runner (--years, default 200).  The published
+!                   7e11 s is ~22,000 model years, which is far more than any
+!                   of these cases needs -- equilibria converge in 15-60 -- and
+!                   becomes a problem once dt is reduced for stability: a
+!                   runaway case at dt = 100 s would spend hours integrating
+!                   toward a temperature that does not exist.
 !   dt              Set PER CASE by the runner from a diffusion stability
 !                   limit, capped at the published 1350 s.  HEXTOR integrates
 !                   the diffusion term explicitly on 18 belts in x = sin(lat),
@@ -104,7 +110,7 @@
    do_manualseasons = .false.,
    tempinit     = {tempinit},
    resfile      = 0,
-   tend		= 7.e11,
+   tend		= {tend},
    dt		= {dt},
    rot		= 4.84813681e-6,
    a		= 8.783631e11,

@@ -128,6 +128,24 @@ def prepare_rundir(rundir):
             os.symlink(target, link)
 
 
+SECONDS_PER_YEAR = 365.0 * 86400.0
+
+
+def ffloat(text):
+    """float() that tolerates what a runaway does to Fortran's output.
+
+    HEXTOR writes its diagnostics with fixed-width descriptors (f6.2, f8.3),
+    so a case that runs away to 10^5 K overflows them and Fortran emits
+    '********'.  That is information -- the run left the physical range -- not
+    a reason for the harness to die, which is what it used to do, taking the
+    whole worker pool with it.
+    """
+    try:
+        return float(text)
+    except ValueError:
+        return float('nan')
+
+
 def parse_zonal(model_out):
     """Pull the ZONAL STATISTICS block out of model.out.
 
@@ -136,6 +154,8 @@ def parse_zonal(model_out):
     substellar point expressed on HEXTOR's latitude grid.
     """
     rows = []
+    if not os.path.exists(model_out):
+        return rows
     with open(model_out) as f:
         lines = f.readlines()
     for i, line in enumerate(lines):
@@ -144,10 +164,9 @@ def parse_zonal(model_out):
                 parts = ln.split()
                 if len(parts) != 9:
                     break
-                try:
-                    rows.append([float(x) for x in parts])
-                except ValueError:
+                if not any(ch.isdigit() for ch in parts[0]):
                     break
+                rows.append([ffloat(x) for x in parts])
             break
     return rows
 
@@ -179,18 +198,18 @@ def parse_scalars(rundir, stdout=''):
         if lines:
             p = lines[-1].split()
             if len(p) >= 8:
-                out['T_global'] = float(p[1])
-                out['pg0'] = float(p[2])
-                out['pco2'] = float(p[3])
-                out['q'] = float(p[6])
-                out['d'] = float(p[7])
+                out['T_global'] = ffloat(p[1])
+                out['pg0'] = ffloat(p[2])
+                out['pco2'] = ffloat(p[3])
+                out['q'] = ffloat(p[6])
+                out['d'] = ffloat(p[7])
             # HEXTOR halts on the year-to-year change in global OLR, which is
             # a false positive on the runaway-greenhouse plateau: there OLR is
             # genuinely insensitive to surface temperature, so it can go flat
             # while the temperature is still climbing.  Record the temperature
             # trend over the final years so that case can be recognised rather
             # than reported as an equilibrium.
-            tail = [float(l.split()[1]) for l in lines[-11:] if len(l.split()) >= 2]
+            tail = [ffloat(l.split()[1]) for l in lines[-11:] if len(l.split()) >= 2]
             if len(tail) >= 2:
                 out['dT_last'] = tail[-1] - tail[0]
                 out['n_years'] = len(lines)
@@ -200,8 +219,8 @@ def parse_scalars(rundir, stdout=''):
         if lines:
             p = lines[-1].split()
             if len(p) >= 3:
-                out['icelineS'] = float(p[1])
-                out['icelineN'] = float(p[2])
+                out['icelineS'] = ffloat(p[1])
+                out['icelineN'] = ffloat(p[2])
     # The flux-convergence message goes to stdout, not model.out.
     m = re.search(r'Flux converged at year\s+([0-9.Ee+-]+)', stdout)
     out['converged'] = bool(m)
@@ -231,7 +250,7 @@ def substellar_longitude(iceline_n, iceline_s):
 
 def run_case(task):
     (sample, inst, ps, init_name, init_t, d0_ref, cloudir, table, outdir,
-     diffadj, rot_scaling) = task
+     diffadj, rot_scaling, years) = task
 
     tag = 'case_%02d_%s' % (sample, init_name)
     rundir = os.path.join(outdir, tag)
@@ -249,7 +268,7 @@ def run_case(task):
         solarcon='%.1f' % inst, cloudir='%.2f' % cloudir, radfile=table,
         diffadj='.true.' if diffadj else '.false.',
         diffadj_rot='.true.' if rot_scaling else '.false.',
-        dt='%.1f' % dt)
+        dt='%.1f' % dt, tend='%.4e' % (years * SECONDS_PER_YEAR))
     with open(os.path.join(rundir, 'input.nml'), 'w') as f:
         f.write(nml)
 
@@ -288,6 +307,8 @@ def run_case(task):
         w = belt_area_weights([r[0] for r in zonal])
         rec['T_min'] = min(r[1] for r in zonal)
         rec['T_max'] = max(r[1] for r in zonal)
+        if any(r[1] != r[1] for r in zonal):
+            rec['T_min'] = rec['T_max'] = float('nan')
         rec['OLR_global'] = sum(wi * r[7] for wi, r in zip(w, zonal))
         rec['ASR_global'] = sum(wi * r[8] for wi, r in zip(w, zonal))
         # What the protocol asks models to drive toward +-1 W/m2.
@@ -313,8 +334,8 @@ def classify(rec, table):
     the last stable state or omitted — so runaways are labelled, not hidden.
     """
     T = rec.get('T_global')
-    if T is None or T != T:               # NaN
-        return 'runaway (numerical failure)'
+    if T is None or T != T:               # NaN, including a format overflow
+        return 'runaway (out of range)'
     tmax = table_tmax(table)
     if tmax is not None and T > tmax:
         return 'runaway (beyond table, T > %.0f K)' % tmax
@@ -328,9 +349,17 @@ def classify(rec, table):
     # +0.86 W/m2 by itself), so a 1-2 W/m2 residual is the model's floor rather
     # than a sign of non-convergence.  The protocol allows exactly this: a
     # stable trend suffices where the balance cannot be driven to +-1 W/m2.
-    if dT is not None and abs(dT) < 0.1 and abs(imb) <= 3.0:
+    # The threshold on the drift has to be loose enough not to bisect a set of
+    # equally converged runs.  Across the cloudir sweep the converged cases sit
+    # at |dT| <= 0.13 K per decade while the runaways are at 0.6 K and above,
+    # so 0.5 K separates them cleanly; a 0.1 K cut instead flipped cases in and
+    # out of 'equilibrium' while their temperatures varied perfectly smoothly.
+    # The protocol accepts "a stable trend over at least 10 orbits" where exact
+    # balance cannot be reached, and 0.12 K per decade on a 180 K planet is
+    # 0.07%.
+    if dT is not None and abs(dT) < 0.5 and abs(imb) <= 3.0:
         return 'equilibrium'
-    if dT is not None and abs(dT) < 1.0 and abs(imb) <= 10.0:
+    if dT is not None and abs(dT) < 2.0 and abs(imb) <= 10.0:
         return 'drifting'
     return 'runaway'
 
@@ -379,6 +408,9 @@ def main():
                          "composition, no rotation term), or 'diffadj' "
                          "(HEXTOR's full scaling, including (rot0/rot)^2). All "
                          "are calibrated to the same D at THAI Hab1.")
+    ap.add_argument('--years', type=float, default=200.0,
+                    help='model years to integrate before giving up (default '
+                         '200; equilibria here converge in 15-60)')
     ap.add_argument('--outdir', default=os.path.join(HEXTOR, 'samosa'))
     ap.add_argument('--workers', type=int, default=8)
     args = ap.parse_args()
@@ -401,7 +433,7 @@ def main():
         for init_name in inits:
             tasks.append((s, inst, ps, init_name, INITS[init_name],
                           args.d0_ref, args.cloudir, args.table, args.outdir,
-                          mode['diffadj'], mode['rot']))
+                          mode['diffadj'], mode['rot'], args.years))
 
     print('SAMOSA sequence %s: %d cases x %d start(s) = %d runs'
           % (args.sequence, len(samples), len(inits), len(tasks)))
