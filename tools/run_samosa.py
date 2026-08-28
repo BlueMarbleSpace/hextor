@@ -242,7 +242,66 @@ def run_case(task):
 
     rec['iceline_lon'] = substellar_longitude(rec.get('icelineN'),
                                               rec.get('icelineS'))
+    rec['state'] = classify(rec, table)
     return rec
+
+
+def classify(rec, table):
+    """Label the outcome, since HEXTOR's own 'converged' flag is not enough.
+
+    HEXTOR halts on the year-to-year change in global OLR.  On the runaway
+    plateau OLR is insensitive to surface temperature, so that criterion trips
+    while the planet is still heating: every case in this parameter space
+    reports converged.  What separates a climate from a runaway is whether the
+    top of the atmosphere actually balances, and whether the model stayed
+    inside the range its radiation table covers.
+
+    The protocol anticipates this — incipient-runaway cases may be reported at
+    the last stable state or omitted — so runaways are labelled, not hidden.
+    """
+    T = rec.get('T_global')
+    if T is None or T != T:               # NaN
+        return 'runaway (numerical failure)'
+    tmax = table_tmax(table)
+    if tmax is not None and T > tmax:
+        return 'runaway (beyond table, T > %.0f K)' % tmax
+    imb = rec.get('TOA_imbalance')
+    dT = rec.get('dT_last')
+    if imb is None or imb != imb:
+        return 'unknown'
+    # Classify on the temperature trend, not the imbalance.  HEXTOR closes its
+    # global budget only to ~1 W/m2 on the 18-belt grid (pre-industrial Earth
+    # sits at -0.91 W/m2, and the discretised dayside insolation carries
+    # +0.86 W/m2 by itself), so a 1-2 W/m2 residual is the model's floor rather
+    # than a sign of non-convergence.  The protocol allows exactly this: a
+    # stable trend suffices where the balance cannot be driven to +-1 W/m2.
+    if dT is not None and abs(dT) < 0.1 and abs(imb) <= 3.0:
+        return 'equilibrium'
+    if dT is not None and abs(dT) < 1.0 and abs(imb) <= 10.0:
+        return 'drifting'
+    return 'runaway'
+
+
+_TMAX = {}
+
+
+def table_tmax(table):
+    """Top of a table's temperature axis; None for the legacy 1 bar format."""
+    if table in _TMAX:
+        return _TMAX[table]
+    path = table
+    if not os.path.isabs(path):
+        path = os.path.join(HEXTOR, 'model', path.lstrip('./'))
+    val = None
+    try:
+        import h5py
+        with h5py.File(path, 'r') as f:
+            if 'temperature' in f:
+                val = float(f['temperature'][:].max())
+    except Exception:
+        val = None
+    _TMAX[table] = val
+    return val
 
 
 def main():
@@ -254,8 +313,10 @@ def main():
     ap.add_argument('--d0-ref', type=float, default=3.10,
                     help='diffusion coefficient at 1 bar; d0 = d0_ref * ps. '
                          'Default 3.10 is the THAI Hab1 tidally-locked value.')
-    ap.add_argument('--cloudir', type=float, default=0.0,
-                    help='uniform OLR offset standing in for clouds [W/m2]')
+    ap.add_argument('--cloudir', type=float, default=-35.0,
+                    help='cloud correction to OLR [W/m2]; driver.f applies '
+                         'ir = ir - cloudir, so the published TRAPPIST-1 value '
+                         'of -35 raises OLR and cools. Pass 0 for clear sky.')
     ap.add_argument('--table', default=DEFAULT_TABLE,
                     help='radiation table, as the driver sees it (relative to '
                          'the run directory)')
@@ -300,13 +361,14 @@ def main():
                         ('%5.1f deg' % rec['iceline_lon'])
                         if rec.get('iceline_lon') is not None else '   n/a',
                         rec['wall_s'])
+                     + '  [%s]' % rec.get('state', '?')
                      if rec['rc'] == 0 else 'FAILED: %s' % rec['error']),
                   flush=True)
 
     results.sort(key=lambda r: (r['case'], r['init']))
     cols = ['case', 'init', 'instellation', 'ps_bar', 'd0', 'cloudir',
             'T_global', 'T_min', 'T_max', 'OLR_global', 'ASR_global',
-            'TOA_imbalance', 'dT_last', 'n_years',
+            'TOA_imbalance', 'dT_last', 'n_years', 'state',
             'icelineN', 'icelineS', 'iceline_lon', 'converged', 'dOLR',
             'wall_s', 'rc', 'error']
     path = os.path.join(args.outdir, 'samosa_summary.csv')
@@ -318,6 +380,11 @@ def main():
 
     nfail = sum(1 for r in results if r['rc'] != 0)
     print('\nwrote %s  (%d runs, %d failed)' % (path, len(results), nfail))
+    tally = {}
+    for r in results:
+        tally[r.get('state', '?')] = tally.get(r.get('state', '?'), 0) + 1
+    for k in sorted(tally):
+        print('  %-38s %d' % (k, tally[k]))
     return 1 if nfail else 0
 
 

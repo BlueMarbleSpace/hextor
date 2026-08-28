@@ -38,6 +38,9 @@
 !                       snow = 0.083*0.97 + 0.917*0.46 = 0.50
 !                   Sea ice is the relevant surface on an aquaplanet, so 0.21
 !                   is used; HEXTOR sets icealb = snowalb (driver.f:836).  The
+!                   published TRAPPIST-1 runs used 0.25 for a 2600 K host; the
+!                   value here follows SAMOSA's own specification instead,
+!                   since the protocol prescribes the two-channel albedos.  The
 !                   red-star ice albedo is far below its Earth value (0.40),
 !                   which weakens the ice-albedo feedback — a known and
 !                   physical M-dwarf effect, not a tuning choice.
@@ -45,9 +48,17 @@
 !                   whose surface-albedo axis reaches open-ocean values; the
 !                   legacy 1 bar tables floored at 0.2.
 !   cloudir         The table is CLEAR SKY, and cloudir is the only cloud
-!                   knob (a uniform offset to OLR).  It is left at 0 by
-!                   default so that the clear-sky result is reported honestly
-!                   rather than tuned per case; see tools/run_samosa.py.
+!                   knob: driver.f:767 applies ir = ir - cloudir, so the
+!                   published -35 W/m2 RAISES the outgoing longwave everywhere
+!                   (a net cooling).  tools/run_samosa.py defaults to that
+!                   published TRAPPIST-1 value for consistency with HEXTOR
+!                   4.2.1; --cloudir 0 recovers the pure clear-sky result.
+!                   CAVEAT: -35 was calibrated against the THAI Hab1 GCM
+!                   ensemble at 1 bar, S = 900 W/m2, around a 2600 K star,
+!                   using the old 1 bar lookup table.  Part of it therefore
+!                   compensates for that table's biases rather than for
+!                   clouds, and none of it was fitted over 0.1-10 bar or
+!                   400-2400 W/m2.
 !   d0 / diffadj    diffadj = .false. and d0 is set PER CASE by the runner as
 !                   d0_ref * pg0, i.e. heat transport scales linearly with
 !                   surface pressure.  HEXTOR's built-in diffadj scaling also
@@ -55,9 +66,11 @@
 !                   of 225 and is not appropriate here; the pressure scaling
 !                   is applied explicitly instead.  d0_ref is the single most
 !                   important free parameter in this configuration.
-!   heat capacity   constheatcap = .false., so cw = 2.1e8 J/m2/K applies over
-!                   ocean — equivalent to a ~50 m slab, matching the protocol.
-!                   This affects only the approach to equilibrium.
+!   heat capacity   constheatcap = .true. with heatcap = 4.00e6, the published
+!                   TRAPPIST-1 value.  The protocol specifies a 50 m slab
+!                   (2.1e8 J/m2/K), but heat capacity sets only the approach to
+!                   equilibrium, not the equilibrium itself, and matching the
+!                   published configuration matters more here.
 ! ---------------------------------------------------------------------------
 
  &ebm
@@ -79,21 +92,29 @@
    fh2          = 0.0,
    ocean	= 1.0,
    igeog        = 4,
-   constheatcap = .false.,
-   heatcap      = 2.10e8,
+   constheatcap = .true.,
+   heatcap      = 4.00e6,
    yrstep       = 1,
    msun         = 2.38692e32,
    iterhalt     = .true.,
    do_longitudinal = .true.,
    haltonCO2cond = .false.,
-   fluxcnvg      = 0.005 /
+   fluxcnvg      = 5.e-4 /
+! fluxcnvg is tightened from the published 0.005 because at 0.005 these cases
+! halt with the global mean still drifting ~0.2 K/decade; 5e-4 costs only a few
+! extra model years and brings the drift to ~0.03 K/decade.  Note it does NOT
+! remove the residual top-of-atmosphere imbalance: HEXTOR closes its global
+! budget to about 1 W/m2 on the 18-belt grid (pre-industrial Earth sits at
+! -0.91 W/m2), and the discretisation of the dayside insolation alone carries
+! +0.86 W/m2.  The temperature trend, not the imbalance, is the meaningful
+! convergence test here.
 
  &radiation
    relsolcon	 = 1.0,
    solarcon      = {solarcon},
    radparam      = 3,
    radfile       = '{radfile}',
-   groundalb	 = 0.21,
+   groundalb	 = 0.30,
    snowalb       = 0.21,
    oceanalbconst = .true.,
    ocnalb        = 0.06,

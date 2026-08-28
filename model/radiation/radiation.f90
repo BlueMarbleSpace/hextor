@@ -293,6 +293,17 @@ subroutine fit_extrap_exponents
 ! olr * (T/T_edge)**n_eff, with n_eff fitted from the gradient at the table
 ! boundary for each (CO2, pressure) column.  This is not a T^4 law: for the
 ! 1 bar Sun table n_eff_upper ~ 2.35 and n_eff_lower ~ 3.77.
+!
+! The upper exponent is floored at zero.  When the top of the table lies on
+! the runaway plateau -- where OLR has saturated and wobbles by ~1 W/m^2 either
+! way -- the fitted exponent can come out slightly negative, and extrapolating
+! that means OLR FALLS as the model heats: an unbounded positive feedback that
+! sends an EBM to absurd temperatures and then to NaN.  A flat extrapolation is
+! also the better physics, since above the plateau OLR stays near the runaway
+! limit until the near-infrared windows open at far higher temperatures
+! (Goldblatt et al. 2013).  Note this does NOT manufacture a stabilising
+! feedback: a case whose absorbed flux exceeds the runaway limit still has no
+! equilibrium, and should be reported as a runaway rather than as a climate.
 
   integer :: i, k
 
@@ -313,6 +324,7 @@ subroutine fit_extrap_exponents
     do i = 1, nco2
       n_eff_upper(i,k) = log( olr_table(ntmp,i,k) / olr_table(ntmp-1,i,k) )   &
                        / log( templevels(ntmp)    / templevels(ntmp-1)    )
+      n_eff_upper(i,k) = max( n_eff_upper(i,k), 0.0 )
       n_eff_lower(i,k) = log( olr_table(2,i,k)    / olr_table(1,i,k)      )   &
                        / log( templevels(2)       / templevels(1)         )
     end do
