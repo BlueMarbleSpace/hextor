@@ -28,6 +28,51 @@ MODE_LABEL = {'constant': 'D constant',
               'diffadj': 'D ~ p, rotation'}
 
 
+def co2_fraction(case_dir):
+    """Fraction of belts with CO2 condensing, from the run's own output."""
+    path = os.path.join(case_dir, 'out', 'co2clouds.out')
+    if not os.path.exists(path):
+        return 0.0
+    lines = [l for l in open(path) if l.strip()]
+    if not lines:
+        return 0.0
+    parts = lines[-1].split()
+    if len(parts) < 19:
+        return 0.0
+    n = 0
+    for x in parts[1:19]:
+        try:
+            n += 1 if float(x) > 0.5 else 0
+        except ValueError:
+            pass
+    return n / 18.0
+
+
+def relabel(r, case_dir):
+    """Re-derive the outcome uniformly across a sweep.
+
+    Configurations in one sweep can have been produced by different versions of
+    the classifier, so the label is recomputed here from the stored numbers
+    plus the run's own CO2 output, and everything is compared on equal terms.
+    """
+    if co2_fraction(case_dir) > 0.5:
+        return 'CO2 condensing'
+    T = fnum(r, 'T_global')
+    if T != T:
+        return 'runaway (out of range)'
+    tmax = 420.0                      # top of the 3000 K table
+    if T > tmax:
+        return 'runaway'
+    imb, dT = fnum(r, 'TOA_imbalance'), fnum(r, 'dT_last')
+    if imb != imb or dT != dT:
+        return 'unknown'
+    if abs(dT) < 0.5 and abs(imb) <= 3.0:
+        return 'equilibrium'
+    if abs(dT) < 2.0 and abs(imb) <= 10.0:
+        return 'drifting'
+    return 'runaway'
+
+
 def load(sweep_dir):
     rows = []
     for name in sorted(os.listdir(sweep_dir)):
@@ -40,6 +85,8 @@ def load(sweep_dir):
             for r in csv.DictReader(f):
                 r['mode'] = mode
                 r['cloudir_val'] = cloudir
+                r['state'] = relabel(r, os.path.join(
+                    sweep_dir, name, 'case_%02d_%s' % (int(r['case']), r['init'])))
                 rows.append(r)
     return rows
 
@@ -68,9 +115,21 @@ def main():
 
     # ---- per case x treatment -------------------------------------------
     eq = defaultdict(list)
+    noneq = defaultdict(lambda: defaultdict(int))
     for r in rows:
         if r.get('state') == 'equilibrium':
             eq[(int(r['case']), r['mode'])].append(fnum(r, 'T_global'))
+        else:
+            noneq[(int(r['case']), r['mode'])][r['state']] += 1
+
+    def outcome(c, m):
+        """Label a cell by its dominant non-equilibrium outcome, not 'runaway'
+        for everything -- a CO2-condensing collapse and a runaway greenhouse
+        are opposite ends of the parameter space."""
+        d = noneq.get((c, m), {})
+        if not d:
+            return 'runaway'
+        return max(d, key=d.get)
 
     inst = {int(r['case']): fnum(r, 'instellation') for r in rows}
     pres = {int(r['case']): fnum(r, 'ps_bar') for r in rows}
@@ -83,7 +142,7 @@ def main():
         for m in modes:
             Ts = eq.get((c, m), [])
             cells.append('%6.1f-%6.1f K %2d/%d' % (min(Ts), max(Ts), len(Ts), ncfg[m])
-                         if Ts else '     runaway  0/%d' % ncfg[m])
+                         if Ts else '%-16s0/%d' % (outcome(c, m)[:15], ncfg[m]))
         print('%-5d %6.0f %7.2f   %s'
               % (c, inst[c], pres[c], '   '.join('%-22s' % x for x in cells)))
     print('-' * (22 + 25 * len(modes)))
@@ -94,6 +153,16 @@ def main():
     for c in cases:
         n = sum(len(eq.get((c, m), [])) for m in modes)
         (always if n == total else never if n == 0 else flips).append(c)
+
+    # Regimes other than equilibrium, counted so they are not lumped together.
+    print()
+    other = defaultdict(int)
+    for r in rows:
+        if r['state'] != 'equilibrium':
+            other[r['state']] += 1
+    print('non-equilibrium outcomes across all configurations:')
+    for k in sorted(other):
+        print('   %-26s %d' % (k, other[k]))
 
     print()
     print('equilibrates in every configuration : %s'

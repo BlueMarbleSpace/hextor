@@ -221,6 +221,22 @@ def parse_scalars(rundir, stdout=''):
             if len(p) >= 3:
                 out['icelineS'] = ffloat(p[1])
                 out['icelineN'] = ffloat(p[2])
+    # Fraction of belts with CO2 condensing at the surface.  SAMOSA's cold
+    # corner reaches this: at 4.83 bar with 400 ppm CO2 the partial pressure is
+    # under 2 mbar, and HEXTOR then pins the surface to the CO2 frost point.
+    # That is a distinct climate regime, not an equilibrium and not a runaway,
+    # and it needs its own label.
+    cc = os.path.join(rundir, 'out', 'co2clouds.out')
+    if os.path.exists(cc):
+        lines = [l for l in open(cc) if l.strip()]
+        if lines:
+            p_ = lines[-1].split()
+            if len(p_) >= 19:
+                flags = [ffloat(x) for x in p_[1:19]]
+                good = [x for x in flags if x == x]
+                if good:
+                    out['co2_condensing'] = sum(1 for x in good if x > 0.5) / len(good)
+
     # The flux-convergence message goes to stdout, not model.out.
     m = re.search(r'Flux converged at year\s+([0-9.Ee+-]+)', stdout)
     out['converged'] = bool(m)
@@ -339,6 +355,9 @@ def classify(rec, table):
     tmax = table_tmax(table)
     if tmax is not None and T > tmax:
         return 'runaway (beyond table, T > %.0f K)' % tmax
+    cond = rec.get('co2_condensing', 0.0)
+    if cond and cond > 0.5:
+        return 'CO2 condensing'
     imb = rec.get('TOA_imbalance')
     dT = rec.get('dT_last')
     if imb is None or imb != imb:
@@ -466,7 +485,7 @@ def main():
     cols = ['case', 'init', 'instellation', 'ps_bar', 'd0', 'cloudir',
             'T_global', 'T_min', 'T_max', 'OLR_global', 'ASR_global',
             'TOA_imbalance', 'dT_last', 'n_years', 'state', 'diffadj',
-            'rot_scaling', 'D', 'dt',
+            'rot_scaling', 'D', 'dt', 'co2_condensing',
             'icelineN', 'icelineS', 'iceline_lon', 'converged', 'dOLR',
             'wall_s', 'rc', 'error']
     path = os.path.join(args.outdir, 'samosa_summary.csv')
