@@ -77,13 +77,19 @@ def main():
     failed |= report('planetary albedo in [0, 1]',
                      int(np.sum((palb < 0) | (palb > 1))), palb.size, True)
 
-    # A column is "on the plateau" where its OLR is within PLATEAU_TOL of that
-    # column's own maximum; there dOLR/dT -> 0 by construction and the sign of
-    # the residual carries no information.
-    PLATEAU_TOL = 10.0    # W/m^2
-    d = np.diff(olr, axis=2)
-    colmax = olr.max(axis=2)[:, :, None]
-    on_plateau = (olr[:, :, :-1] > colmax - PLATEAU_TOL)
+    # A column is "on the plateau" where OLR has stopped responding to
+    # temperature: the local slope is a small fraction of that column's
+    # steepest slope.  Defining it by proximity to the column maximum instead
+    # fails at low CO2, where OLR peaks near 300 K and then settles slightly
+    # BELOW that peak, leaving genuinely saturated points looking like errors.
+    # This form also copes with the uneven temperature spacing of an extended
+    # table, since it works in dOLR/dT rather than per step.
+    PLATEAU_FRAC = 0.05
+    dT = np.diff(tm)[None, None, :]
+    slope = np.diff(olr, axis=2) / dT
+    maxslope = np.abs(slope).max(axis=2)[:, :, None]
+    d = slope
+    on_plateau = np.abs(slope) < PLATEAU_FRAC * maxslope
     bad = np.argwhere((d <= 0) & ~on_plateau)
     ex = ['p=%.3g fco2=%.3g between T=%.0f and %.0f: %.2f -> %.2f W/m2'
           % (pre[i], fc[j], tm[k], tm[k + 1], olr[i, j, k], olr[i, j, k + 1])
@@ -99,11 +105,11 @@ def main():
     # is probing, and a quick way to see the table is resolving it.
     print()
     ic = int(np.argmin(np.abs(fc - 4.0e-4)))
-    print('  runaway plateau at fCO2 = %.1e (OLR within %.0f W/m2 of the '
-          'column maximum):' % (fc[ic], PLATEAU_TOL))
+    print('  runaway plateau at fCO2 = %.1e (dOLR/dT below %.0f%% of the '
+          'column maximum slope):' % (fc[ic], 100 * PLATEAU_FRAC))
     for i in range(0, len(pre), max(1, len(pre) // 6)):
         col = olr[i, ic, :]
-        hit = np.argmax(col > col.max() - PLATEAU_TOL)
+        hit = int(np.argmax(on_plateau[i, ic, :]))
         print('    p = %6.2f bar : from Ts = %3.0f K, OLR -> %.1f W/m2'
               % (pre[i], tm[hit], col.max()))
 

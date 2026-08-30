@@ -48,6 +48,26 @@ def co2_fraction(case_dir):
     return n / 18.0
 
 
+_CEIL = {}
+
+
+def table_ceiling(path='model/radiation/radiation_N2_CO2_3000K_p.h5'):
+    """Top of the table's temperature axis, read rather than assumed.
+
+    Above it OLR is extrapolated, and an extrapolated equilibrium is not one:
+    before the table was extended to 620 K, case 16 reported a 498 K
+    'equilibrium' that was an artefact of a slope fitted on the rising limb.
+    """
+    if 'v' not in _CEIL:
+        try:
+            import h5py
+            with h5py.File(path, 'r') as f:
+                _CEIL['v'] = float(f['temperature'][:].max())
+        except Exception:
+            _CEIL['v'] = 420.0
+    return _CEIL['v']
+
+
 def relabel(r, case_dir):
     """Re-derive the outcome uniformly across a sweep.
 
@@ -60,7 +80,7 @@ def relabel(r, case_dir):
     T = fnum(r, 'T_global')
     if T != T:
         return 'runaway (out of range)'
-    tmax = 420.0                      # top of the 3000 K table
+    tmax = table_ceiling()
     if T > tmax:
         return 'runaway'
     imb, dT = fnum(r, 'TOA_imbalance'), fnum(r, 'dT_last')
