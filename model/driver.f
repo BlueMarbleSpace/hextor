@@ -116,6 +116,7 @@ c----------------------------------------------------------------------c
       logical do_longitudinal, do_manualseasons, do_gough, do_marshist
       logical fillet, do_dailyoutput, do_futuresol, do_bioprod
       logical haltonCO2cond
+      logical diffadj_rot
       real landsnowfrac, RAND, boxmuller, noisevar, heatcap, ocnalb
       real outgassing, weathering, betaexp, kact, krun, q0
       real pg0, ir2, fh2, co2sat, h2escape, ph2, ncolh2, h2outgas
@@ -139,7 +140,7 @@ c----------------------------------------------------------------------c
 
       NAMELIST /ebm/ seasons, tend, dt, rot, a, ecc, peri,
      &               obl, ocean, igeog, yrstep, resfile, d0,
-     &               constheatcap, heatcap, diffadj,
+     &               constheatcap, heatcap, diffadj, diffadj_rot,
      &               iterhalt, fco2, fh2, pg0, tempinit, msun,
      &               do_longitudinal, do_manualseasons,
      &               cl, cw, ci, do_dailyoutput, fillet,
@@ -218,6 +219,7 @@ c  INITIALIZE VARIABLES
       linalb = .false.   ! set .true. for constant TOA albedo
       constheatcap = .false. ! set .true. for constant heat capacity
       diffadj = .true.  ! set .false. to turn off diffusion parameter adjustment
+      diffadj_rot = .true. ! set .false. to drop the (rot0/rot)^2 term from diffadj
       cloudalb = .true. ! set .false. to disable cloud albedo
       iterhalt = .false.  ! set .true. to enable halt based on iterations
       fluxcnvg = 0.1      ! OLR convergence threshold (W/m²) for iterhalt mode
@@ -321,12 +323,16 @@ c SET UP INITIAL TEMPERATURE PROFILE
           pn2 = 0.0
           fh2 = 1.-fco2
         else 
-          pn2 = 1.0
+          ! pg0 from the namelist is the total DRY surface pressure, which is
+          ! also the pressure coordinate of the v2 lookup tables.  This used to
+          ! read pn2 = 1.0 / pg0 = pn2 + pco2, pinning every radparam=3 run to
+          ! a 1 bar N2 background regardless of the namelist -- correct for the
+          ! legacy tables, which were computed for exactly that, but it would
+          ! render a pressure-resolved table inert.  For a 1 bar case the two
+          ! differ only in whether pCO2 sits inside or on top of the bar
+          ! (pg0 = 1.0 vs 1 + pCO2, i.e. 0.03% at pre-industrial CO2).
           pco2 = pg0*fco2
-          pg0 = pn2 + pco2
-          !pco2 = pg0*fco2
-          !ph2 = pg0*fh2
-          !pn2 = pg0
+          pn2  = pg0 - pco2
         end if
         call radiation_init( radfile )
 
@@ -697,9 +703,10 @@ c    of 4.59 Wm^-2.)
       else if ( radparam .eq. 3 ) then
 
         olrval = 0.0
-        !lookup coordinate is the true CO2 mixing ratio, not pCO2 in bar
+        !lookup coordinates are the dry surface pressure in bar and the true
+        !CO2 mixing ratio, not pCO2 in bar
         fco2rad = pco2/pg0
-        call getOLR( fco2rad, temp(k), olrval ) 
+        call getOLR( pg0, fco2rad, temp(k), olrval ) 
         ir(k) = olrval / 1000.
         if ( ir(k) .le. -1. ) then
           print *, "radiation_mod: OLR solution unstable"
@@ -1140,9 +1147,10 @@ c      as = .216
       else if ( radparam .eq. 3 ) then
         zendeg = acos(mu(k))*180./pi
 
-        !lookup coordinate is the true CO2 mixing ratio, not pCO2 in bar
+        !lookup coordinates are the dry surface pressure in bar and the true
+        !CO2 mixing ratio, not pCO2 in bar
         fco2rad = pco2/pg0
-        call getPALB( fco2rad, temp(k), zendeg,
+        call getPALB( pg0, fco2rad, temp(k), zendeg,
      &                surfalb(k), atoa(k) )
 
         if ( atoa(k) .le. -1 ) then
@@ -1600,8 +1608,17 @@ c  ADJUST DIFFUSION COEFFICIENT
       hcp = (hcpn2*pn2 + pco2*hcpco2 + hcph2*ph2)/(pg0)
 
       if ( diffadj ) then
-      d = d0*(pg0)*((avemol0/avemol)**2)*(hcp/hcp0)*  
-     &   (rot0/rot)**2
+c  The three factors are independent, and it is sometimes right to want only
+c  some of them.  Pressure and composition follow from the atmosphere itself.
+c  The rotation term (Williams & Kasting 1997: slower rotation -> weaker
+c  Coriolis -> more efficient transport) instead depends on the planet's spin,
+c  and it is large for slow rotators -- 37 for a 6.1 day period, 225 for 15
+c  days -- so calibrating d0 for one rotator and carrying it to another moves
+c  the transport by that ratio.  diffadj_rot = .false. keeps the pressure and
+c  composition scaling and drops the rotation factor.  The default .true. is
+c  the published behaviour.
+      d = d0*(pg0)*((avemol0/avemol)**2)*(hcp/hcp0)
+      if ( diffadj_rot ) d = d*(rot0/rot)**2
 !        print *, hcp 
 c-nb  
       do k = 1, nbelts, 1
