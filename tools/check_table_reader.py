@@ -78,6 +78,12 @@ def reference(f, pdry, fco2, tg0, zy, alb):
         for ip, wp in ((ip0, 1 - fp), (ip1, fp)):
             for ic, wc in ((ic0, 1 - fc_), (ic1, fc_)):
                 n = np.log(olrt[ip, ic, ea] / olrt[ip, ic, eb]) / np.log(ta / tb)
+                # radiation.f90 floors the upper exponent at zero: on the
+                # runaway plateau the fit can come out slightly negative, and
+                # extrapolating that would make OLR fall as the model heats.
+                # The reference has to mirror the module, not the algebra.
+                if tg0 > tm[-1]:
+                    n = max(n, 0.0)
                 n_eff += wp * wc * n
         olr *= (tg0 / tg_eval) ** n_eff
 
