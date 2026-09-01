@@ -1,25 +1,11 @@
 #!/usr/bin/env python3
 """
-samosa_submit.py — package HEXTOR results in the format the SAMOSA
-intercomparison expects.
+samosa_submit.py — write HEXTOR's SAMOSA results as the protocol's global
+output table.
 
-Produces, for a completed run directory from tools/run_samosa.py:
-
-  global_output_HEXTOR.dat   the protocol's global summary table, one row per
-                             case, in the column order of the distributed
-                             template
-  samosa<N>_HEXTOR.nc        per case, the Table 5 two-dimensional diagnostics
-                             on the same 46 x 72 grid the ExoCAM submission
-                             uses, with CESM variable names so the files drop
-                             into the existing analysis
-  README_HEXTOR.txt          what an energy balance model can and cannot supply
-
-HEXTOR solves one dimension: the angle from the sub-stellar point.  Its fields
-are therefore axisymmetric about that point, and the maps here are that profile
-rotated onto the comparison grid, with cos(theta) = cos(lat) cos(lon) for a
-sub-stellar point at (0, 0).  The maps carry no more information than the
-18-belt profile, which is written into the same files as a native
-one-dimensional variable so nothing is hidden by the interpolation.
+Produces global_output_HEXTOR.dat from a completed run directory: one row per
+case, in the column order of the distributed template, with the model
+description and the omitted cases recorded in the header.
 
 Diagnostics that require a vertical dimension, water vapor, clouds or ice
 thickness are left as NaN rather than being invented; the protocol asks
@@ -33,7 +19,6 @@ import csv
 import math
 import os
 import sys
-from datetime import datetime, timezone
 
 import numpy as np
 
@@ -41,10 +26,7 @@ HEXTOR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL = 'HEXTOR'
 CONTACT = 'Jacob Haqq-Misra (jacob@bmsis.org)'
 
-# Comparison grid, matching the ExoCAM submission (4 deg x 5 deg).
-NLAT, NLON = 46, 72
 ICETEMP = 263.15          # driver.f:251
-FILL = float('nan')
 
 
 def belt_weights(coords_deg, nbelts=18):
@@ -93,88 +75,6 @@ def read_case(case_dir):
                 olr=z[:, 7], asr=z[:, 8], w=belt_weights(z[:, 0]))
 
 
-def to_map(theta, values, lat, lon):
-    """Rotate a profile in angle-from-sub-stellar onto a lat/lon grid."""
-    LON, LAT = np.meshgrid(np.radians(lon), np.radians(lat))
-    cos_theta = np.clip(np.cos(LAT) * np.cos(LON), -1.0, 1.0)
-    grid_theta = np.degrees(np.arccos(cos_theta))
-    idx = np.argsort(theta)
-    return np.interp(grid_theta, theta[idx], np.asarray(values)[idx])
-
-
-def write_netcdf(path, sample, inst, pres, d, lat, lon):
-    import netCDF4 as nc
-
-    fice = ice_fraction(d['T'])
-    insol = inst * np.clip(np.cos(np.radians(d['theta'])), 0.0, None)
-
-    with nc.Dataset(path, 'w', format='NETCDF4_CLASSIC') as f:
-        f.createDimension('latitude', len(lat))
-        f.createDimension('longitude', len(lon))
-        f.createDimension('theta', len(d['theta']))
-
-        def var(name, dims, data, units, long_name):
-            v = f.createVariable(name, 'f8', dims, fill_value=FILL)
-            v.units = units
-            v.long_name = long_name
-            v[:] = data
-            return v
-
-        var('latitude', ('latitude',), lat, 'degrees_north', 'latitude')
-        var('longitude', ('longitude',), lon, 'degrees_east', 'longitude')
-
-        # Two-dimensional diagnostics (Table 5), axisymmetric about (0, 0).
-        var('TS', ('latitude', 'longitude'), to_map(d['theta'], d['T'], lat, lon),
-            'K', 'Surface temperature')
-        var('FLUT', ('latitude', 'longitude'),
-            to_map(d['theta'], d['olr'], lat, lon),
-            'W/m2', 'Upwelling longwave flux at top of model')
-        var('FLNT', ('latitude', 'longitude'),
-            to_map(d['theta'], d['olr'], lat, lon),
-            'W/m2', 'Net longwave flux at top of model')
-        var('FSNTOA', ('latitude', 'longitude'),
-            to_map(d['theta'], d['asr'], lat, lon),
-            'W/m2', 'Net solar flux at top of atmosphere')
-        var('SOLIN', ('latitude', 'longitude'), to_map(d['theta'], insol, lat, lon),
-            'W/m2', 'Downward solar flux at top of atmosphere')
-        var('ALBEDO', ('latitude', 'longitude'),
-            to_map(d['theta'], d['albedo'], lat, lon),
-            'fraction', 'Planetary albedo')
-        var('ICEFRAC', ('latitude', 'longitude'), to_map(d['theta'], fice, lat, lon),
-            'fraction', 'Fraction of sfc area covered by sea-ice')
-        var('OCNFRAC', ('latitude', 'longitude'),
-            to_map(d['theta'], 1.0 - fice, lat, lon),
-            'fraction', 'Fraction of sfc area covered by open ocean')
-
-        # The native solution, so the maps can be checked against it.
-        var('theta', ('theta',), d['theta'], 'degrees',
-            'angle from sub-stellar point')
-        var('TS_theta', ('theta',), d['T'], 'K',
-            'Surface temperature on the native HEXTOR belts')
-        var('FLUT_theta', ('theta',), d['olr'], 'W/m2',
-            'Outgoing longwave on the native HEXTOR belts')
-        var('FSNTOA_theta', ('theta',), d['asr'], 'W/m2',
-            'Absorbed stellar radiation on the native HEXTOR belts')
-        var('area_theta', ('theta',), d['w'], 'fraction',
-            'Fractional area of each HEXTOR belt')
-
-        f.model = MODEL
-        f.contact = CONTACT
-        f.sample = sample
-        f.instellation_W_m2 = inst
-        f.surface_pressure_bar = pres
-        f.description = ('HEXTOR is a one-dimensional energy balance model in '
-                         'the tidally locked coordinate. The lat/lon fields are '
-                         'the 18-belt profile rotated about the sub-stellar '
-                         'point at (0, 0) and carry no additional information; '
-                         'the native profile is included as the *_theta '
-                         'variables.')
-        f.omitted = ('No vertical dimension, water vapor, clouds or ice '
-                     'thickness: the corresponding Table 5 diagnostics are not '
-                     'provided.')
-        f.created = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -195,9 +95,6 @@ def main():
         c = int(r['case'])
         if c not in by_case or r['init'] == 'warm':
             by_case[c] = r
-
-    lat = np.linspace(-90.0, 90.0, NLAT)
-    lon = np.linspace(0.0, 360.0 - 360.0 / NLON, NLON)
 
     reported, skipped, cfg = [], [], None
     for c in sorted(by_case):
@@ -223,8 +120,6 @@ def main():
             olr=float(np.sum(w * d['olr'])), asr=float(np.sum(w * d['asr'])),
             fsdn=float(np.sum(w * insol)), fnet=float(np.sum(w * d['olr'])),
             ocnfrac=float(np.sum(w * (1.0 - fice)))))
-        write_netcdf(os.path.join(args.outdir, 'samosa%d_%s.nc' % (c, MODEL)),
-                     c, inst, pres, d, lat, lon)
 
     # ---- global output table, in the template's column order -----------------
     path = os.path.join(args.outdir, 'global_output_%s.dat' % MODEL)
@@ -266,39 +161,8 @@ def main():
                        r['tmin'], r['olr'], r['asr'], r['fsdn'], r['fnet'],
                        r['ocnfrac']))
 
-    # ---- README --------------------------------------------------------------
-    with open(os.path.join(args.outdir, 'README_%s.txt' % MODEL), 'w') as f:
-        f.write('SAMOSA submission: %s\n%s\n\n' % (MODEL, '=' * 30))
-        f.write('Contact: %s\n\n' % CONTACT)
-        f.write('Files\n-----\n')
-        f.write('  global_output_%s.dat   global summary, template column order\n' % MODEL)
-        f.write('  samosa<N>_%s.nc        per-case fields for the cases that\n' % MODEL)
-        f.write('                          reach a steady climate\n\n')
-        f.write('What this model provides\n------------------------\n')
-        f.write('HEXTOR is a one-dimensional energy balance model. It solves for\n')
-        f.write('surface temperature against the angle from the sub-stellar point\n')
-        f.write('on 18 belts, so its fields are axisymmetric about that point. The\n')
-        f.write('latitude/longitude maps in the netCDF files are that profile\n')
-        f.write('rotated onto the 46 x 72 grid used by the ExoCAM submission, with\n')
-        f.write('cos(theta) = cos(lat) cos(lon) and the sub-stellar point at (0, 0).\n')
-        f.write('They contain no information beyond the profile, which is included\n')
-        f.write('in the same files as the *_theta variables.\n\n')
-        f.write('Supplied : TS, FLUT, FLNT, FSNTOA, SOLIN, ALBEDO, ICEFRAC, OCNFRAC\n')
-        f.write('Not supplied: every diagnostic requiring a vertical dimension,\n')
-        f.write('water vapor, clouds or ice thickness. The model has no vertical\n')
-        f.write('structure and no cloud physics; cloud radiative effects enter only\n')
-        f.write('as a uniform offset to the outgoing longwave, fitted to the THAI\n')
-        f.write('ensemble, which is not a cloud field and is not reported as one.\n\n')
-        if skipped:
-            f.write('Cases without a steady state\n----------------------------\n')
-            for c, st in skipped:
-                f.write('  sample %-2d : %s\n' % (c, st))
-            f.write('\nThe protocol allows incipient runaway cases to be omitted or\n')
-            f.write('reported at the last stable state; they are omitted here.\n')
-
-    print('wrote %d case files to %s' % (len(reported), args.outdir))
-    print('  global_output_%s.dat  (%d cases reported, %d omitted)'
-          % (MODEL, len(reported), len(skipped)))
+    print('wrote %s' % path)
+    print('  %d cases reported, %d omitted' % (len(reported), len(skipped)))
     for c, st in skipped:
         print('     omitted sample %-2d : %s' % (c, st))
     return 0
