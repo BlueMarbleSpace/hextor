@@ -88,6 +88,8 @@ It writes `samosa/samosa_summary.csv` plus a per-case zonal profile in the subst
 
 The broadband surface albedos are the protocol's two-channel ice/snow values weighted by the fraction of a 3000 K blackbody below 0.7 µm (f_vis = 0.083 → ice 0.21, snow 0.50, against 0.40/0.71 under the Sun).
 
+**Possible future work** is scoped in `notes/`: `notes/ch4_lookup_table.md` covers adding CH4 to the tables (no radiative transfer work needed — ExoRT and ExoColumn already do CH4 — but the effort depends on whether CH4 is a scenario parameter or prognostic).
+
 There is no traditional test suite; correctness is verified by comparing simulation outputs to known results.
 
 ## Architecture
