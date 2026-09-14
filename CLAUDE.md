@@ -68,7 +68,7 @@ Three validation scripts, each answering a question the table's accuracy depends
 
 **Re-calibrating after a table change** (`tools/calibrate_thai.py`): the published `(d0, cloudir) = (3.10, −35.0)` was fitted against the old 1 bar 2600 K table, so part of that −35 W/m² compensates for that table rather than for clouds. Re-running the published procedure against a BT-Settl 2600 K table built with ExoRT gives `(3.33, −45.0)` and fits the THAI ensemble day-night contrast six times better (0.7 K error against 4.3 K). Consistency with a published calibration means re-running its *procedure*, not transplanting its constants onto different radiative transfer.
 
-**SAMOSA intercomparison**: `namelists/input.nml.samosa` is the protocol template (3000 K blackbody — the M-dwarf table `radiation_N2_CO2_3000K_p.h5`, not the Sun; 15 d synchronous, aquaplanet, 400 ppm CO2) and `tools/run_samosa.py` runs the case sequences, each in its own scratch directory:
+**SAMOSA intercomparison**: `namelists/input.nml.samosa` is the protocol template (3000 K blackbody — the M-dwarf table `radiation_N2_CO2_3000K_p.h5`, not the Sun; 15 d synchronous, aquaplanet, CO2 at a fixed 400 µbar partial pressure per the 2024 erratum — not 400 ppm, so `run_samosa.py` sets `pg0 = pN2 + 4e-4` and `fco2 = 4e-4/pg0` per case) and `tools/run_samosa.py` runs the case sequences, each in its own scratch directory:
 
 ```bash
 python tools/run_samosa.py --sequence all16 --d0-ref 3.10 --init both

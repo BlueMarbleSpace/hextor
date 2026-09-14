@@ -43,7 +43,14 @@ TEMPLATE = os.path.join(HEXTOR, 'namelists', 'input.nml.samosa')
 DRIVER = os.path.join(HEXTOR, 'model', 'driver')
 DEFAULT_TABLE = './radiation/radiation_N2_CO2_3000K_p.h5'
 
-# (sample, instellation [W/m2], surface pressure [bar]) from the protocol.
+# CO2 is a fixed PARTIAL PRESSURE of 400 ubar (Haqq-Misra et al. 2024
+# erratum), not a fixed 400 ppm mixing ratio: the CO2 column is the same in
+# every case and the mixing ratio falls as the N2 pressure rises.  HEXTOR's
+# pg0 is the dry surface pressure (pN2 + pCO2), so each case gets
+# pg0 = pN2 + P_CO2 and fco2 = P_CO2 / pg0.
+P_CO2 = 4.0e-4           # bar
+
+# (sample, instellation [W/m2], N2 pressure [bar]) from the protocol.
 # Table 1 = Sequence 1 (1-8) and Sequence 2 (9-16); Table 4 = Sequence 1b
 # (17-24), Sequence 2b (25-32) and Sequence 3 (33-64).
 CASES = [
@@ -94,16 +101,15 @@ TRANSPORT = {
 }
 
 
-def effective_D(d0_ref, ps, diffadj, rot_scaling, fco2=4.0e-4,
+def effective_D(d0_ref, pn2, diffadj, rot_scaling, pco2=P_CO2,
                 rot=4.84813681e-6, rot0=7.27e-5):
     """The diffusion coefficient the driver will end up using."""
     if not diffadj:
         return d0_ref
-    pco2 = ps * fco2
-    pn2 = ps - pco2
-    avemol = (28.0 * pn2 + 44.0 * pco2) / ps
-    hcp = (0.2484 * pn2 + 0.2105 * pco2) / ps
-    d = d0_ref * ps * (28.89 / avemol) ** 2 * (hcp / 0.2401)
+    pg0 = pn2 + pco2
+    avemol = (28.0 * pn2 + 44.0 * pco2) / pg0
+    hcp = (0.2484 * pn2 + 0.2105 * pco2) / pg0
+    d = d0_ref * pg0 * (28.89 / avemol) ** 2 * (hcp / 0.2401)
     if rot_scaling:
         d *= (rot0 / rot) ** 2
     return d
@@ -222,8 +228,8 @@ def parse_scalars(rundir, stdout=''):
                 out['icelineS'] = ffloat(p[1])
                 out['icelineN'] = ffloat(p[2])
     # Fraction of belts with CO2 condensing at the surface.  SAMOSA's cold
-    # corner reaches this: at 4.83 bar with 400 ppm CO2 the partial pressure is
-    # under 2 mbar, and HEXTOR then pins the surface to the CO2 frost point.
+    # corner can reach this: with only 400 ubar of CO2 a cold enough surface
+    # drops below the frost point, and HEXTOR then pins it there.
     # That is a distinct climate regime, not an equilibrium and not a runaway,
     # and it needs its own label.
     cc = os.path.join(rundir, 'out', 'co2clouds.out')
@@ -278,9 +284,12 @@ def run_case(task):
     d0 = d0_ref
     D = effective_D(d0_ref, ps, diffadj, rot_scaling)
     dt = stable_dt(D)
+    pg0 = ps + P_CO2
+    fco2 = P_CO2 / pg0
 
     nml = open(TEMPLATE).read().format(
-        tempinit='%.1f' % init_t, d0='%.6f' % d0, pg0='%.5f' % ps,
+        tempinit='%.1f' % init_t, d0='%.6f' % d0, pg0='%.5f' % pg0,
+        fco2='%.6e' % fco2,
         solarcon='%.1f' % inst, cloudir='%.2f' % cloudir, radfile=table,
         diffadj='.true.' if diffadj else '.false.',
         diffadj_rot='.true.' if rot_scaling else '.false.',
@@ -300,7 +309,8 @@ def run_case(task):
         rc, err = -1, 'timeout'
 
     rec = {'case': sample, 'init': init_name, 'instellation': inst,
-           'ps_bar': ps, 'd0': d0, 'cloudir': cloudir, 'diffadj': diffadj,
+           'ps_bar': ps, 'fco2': fco2, 'd0': d0, 'cloudir': cloudir,
+           'diffadj': diffadj,
            'rot_scaling': rot_scaling, 'D': D, 'dt': dt,
            'rc': rc, 'error': err, 'wall_s': round(time.time() - t0, 1)}
     rec.update(parse_scalars(rundir, stdout))
@@ -482,7 +492,7 @@ def main():
                   flush=True)
 
     results.sort(key=lambda r: (r['case'], r['init']))
-    cols = ['case', 'init', 'instellation', 'ps_bar', 'd0', 'cloudir',
+    cols = ['case', 'init', 'instellation', 'ps_bar', 'fco2', 'd0', 'cloudir',
             'T_global', 'T_min', 'T_max', 'OLR_global', 'ASR_global',
             'TOA_imbalance', 'dT_last', 'n_years', 'state', 'diffadj',
             'rot_scaling', 'D', 'dt', 'co2_condensing',

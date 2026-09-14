@@ -13,7 +13,9 @@
 !   rotation        15 d, synchronous
 !   orbital period  15 d
 !   planet          1 M(Earth), 1 R(Earth), 1 g(Earth)
-!   atmosphere      400 ppm CO2, N2 background
+!   atmosphere      N2 background plus CO2 at a fixed partial pressure of
+!                   400 ubar (2024 erratum; NOT 400 ppm).  The runner sets
+!                   pg0 = pN2 + 4e-4 bar and fco2 = 4e-4 / pg0 per case.
 !   surface         aquaplanet, 50 m slab ocean, no ocean heat transport
 !
 ! HEXTOR-specific choices
@@ -121,7 +123,7 @@
    diffadj      = {diffadj},
    diffadj_rot  = {diffadj_rot},
    pg0          = {pg0},
-   fco2         = 4.0e-4,
+   fco2         = {fco2},
    fh2          = 0.0,
    ocean	= 1.0,
    igeog        = 4,

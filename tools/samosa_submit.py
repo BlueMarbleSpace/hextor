@@ -132,7 +132,10 @@ def main():
         f.write('#   Radiative transfer by interpolation in lookup tables computed\n')
         f.write('#   with ExoColumn/ExoRT n68equiv for a 3000 K blackbody, indexed by\n')
         f.write('#   dry surface pressure, CO2 mixing ratio, surface temperature,\n')
-        f.write('#   zenith angle and surface albedo. Clear sky: HEXTOR has no\n')
+        f.write('#   zenith angle and surface albedo. CO2 is a fixed partial\n')
+        f.write('#   pressure of 400 ubar (2024 erratum), so the CO2 mixing ratio\n')
+        f.write('#   falls as the N2 pressure rises; Pres is the N2 pressure.\n')
+        f.write('#   Clear sky: HEXTOR has no\n')
         f.write('#   clouds, and no vertical dimension, water vapor or ice thickness,\n')
         f.write('#   so Qstrat, Qmass, Icethick, Cldliq, Cldice and Cldfrac are NaN.\n')
         if cfg is not None:
