@@ -1939,7 +1939,7 @@ c  LOOP ONE MORE TIME, AND WRITE OUTPUT TO FILES
 c  initialize zntempmin matrix
 
       do 1125 k = 1,nbelts,1
-         zntempmin(k) = 500. !**some large temperature
+         zntempmin(k) = 1.e30 !**larger than any belt temperature (500 K was not)
  1125 continue
 c
       write(15,1130)
