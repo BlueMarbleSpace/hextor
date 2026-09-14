@@ -4,9 +4,13 @@ merge_radiation_tables.py — join two v2 radiation tables along the temperature
 axis.
 
 Extending a table's temperature range does not require regenerating it.  The
-pressure and CO2 axes are the outer loop of make_radiation_table.py, so the
-extra temperatures can be generated on their own and stitched on here, which
-costs only the fraction of the work the new levels represent.
+pressure, CO2 and CH4 axes are the outer loop of make_radiation_table.py, so
+the extra temperatures can be generated on their own and stitched on here,
+which costs only the fraction of the work the new levels represent.
+
+Both v2 (no CH4 axis) and v3 (CH4-resolved) tables are accepted, but the two
+inputs must be the same format: temperature is a different array axis in each,
+so merging across formats would silently misalign the data.
 
 Every other axis, and the physical assumptions recorded in the file
 attributes, must agree between the two inputs; a mismatch is an error rather
@@ -21,6 +25,8 @@ import sys
 import numpy as np
 import h5py
 
+# Axes that must agree between the two inputs.  'ch4' is optional, so it is
+# checked only when present in both -- see the format comparison below.
 AXES = ['pressure', 'fco2', 'zenith', 'surfalb']
 
 # Attributes that describe the physics rather than the bookkeeping.  These must
@@ -39,7 +45,19 @@ def main():
     args = ap.parse_args()
 
     with h5py.File(args.base, 'r') as a, h5py.File(args.extension, 'r') as b:
-        for ax in AXES:
+        # Temperature sits at a different array axis in v2 and v3, so the two
+        # inputs have to carry the same format before anything is joined.
+        ach4, bch4 = 'ch4' in a, 'ch4' in b
+        if ach4 != bch4:
+            print('format mismatch: %s has %s CH4 axis, %s has %s'
+                  % (args.base, 'a' if ach4 else 'no',
+                     args.extension, 'one' if bch4 else 'none'))
+            return 1
+        axes = AXES + (['ch4'] if ach4 else [])
+        # A CH4 axis shifts temperature from array axis 2 to axis 3.
+        tax = 3 if ach4 else 2
+
+        for ax in axes:
             if a[ax].shape != b[ax].shape or not np.allclose(a[ax][:], b[ax][:]):
                 print('axis mismatch: %s differs between the two tables' % ax)
                 return 1
@@ -61,14 +79,16 @@ def main():
         order = np.argsort(temperature)
         temperature = temperature[order]
 
-        olr = np.concatenate([a['olr'][:], b['olr'][:]], axis=2)[:, :, order]
-        palb = np.concatenate([a['palb'][:], b['palb'][:]], axis=2)[:, :, order, :, :]
+        olr = np.concatenate([a['olr'][:], b['olr'][:]], axis=tax)
+        palb = np.concatenate([a['palb'][:], b['palb'][:]], axis=tax)
+        olr = np.take(olr, order, axis=tax)
+        palb = np.take(palb, order, axis=tax)
 
         with h5py.File(args.out, 'w') as o:
             o.create_dataset('olr', data=olr)
             o.create_dataset('palb', data=palb)
             o.create_dataset('temperature', data=temperature)
-            for ax in AXES:
+            for ax in axes:
                 o.create_dataset(ax, data=a[ax][:])
             for k, v in a.attrs.items():
                 o.attrs[k] = v

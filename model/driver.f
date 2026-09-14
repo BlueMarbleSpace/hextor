@@ -120,6 +120,7 @@ c----------------------------------------------------------------------c
       real landsnowfrac, RAND, boxmuller, noisevar, heatcap, ocnalb
       real outgassing, weathering, betaexp, kact, krun, q0
       real pg0, ir2, fh2, co2sat, h2escape, ph2, ncolh2, h2outgas
+      real fch4, pch4, fch4rad, hcpch4, ch4lo, ch4hi
       real icelineN, icelineS
       real icelineNMax, icelineNMin, icelineSMax, icelineSMin
       real cl, cw, ci, pco20, pco2soil0, pco2soil, gamma, gammaout
@@ -141,7 +142,7 @@ c----------------------------------------------------------------------c
       NAMELIST /ebm/ seasons, tend, dt, rot, a, ecc, peri,
      &               obl, ocean, igeog, yrstep, resfile, d0,
      &               constheatcap, heatcap, diffadj, diffadj_rot,
-     &               iterhalt, fco2, fh2, pg0, tempinit, msun,
+     &               iterhalt, fco2, fh2, fch4, pg0, tempinit, msun,
      &               do_longitudinal, do_manualseasons,
      &               cl, cw, ci, do_dailyoutput, fillet,
      &               haltonCO2cond, fluxcnvg
@@ -222,6 +223,7 @@ c  the year-0 row of tempseries.out depend on the variable layout.
       hcpco2 = 0.2105  !heat capacity of co2 (cal/g K)
       hcpn2 = .2484     ! heat capacity of n2
       hcph2 = 3.420      !heat capacity of h2 
+      hcpch4 = 0.5271    !heat capacity of ch4 (cal/g K)
       landsnowfrac = 1.0 !snowfall fraction on land
       fcloud = 0.5     !fractional cloud cover
       noisevar = 0.15  ! noise variance (K^2 per year)
@@ -245,6 +247,12 @@ c  the year-0 row of tempseries.out depend on the variable layout.
       krun = 0.045      ! runoff efficiency factor
       pg0 = 1.0         ! surface pressure (bars)
       fh2 = 0.0
+      fch4 = 0.0        ! CH4 mixing ratio of dry air; needs a radfile with a
+                        ! CH4 axis (radparam = 3), see the check after
+                        ! radiation_init below
+      pch4 = 0.0        ! CH4 partial pressure (bars).  Set here as well as in
+                        ! the radparam = 3 branch because avemol and hcp use it
+                        ! for every radparam, and only that branch assigns it.
       h2outgas = 2.67e12
       radparam = 4      ! OLR/albedo parameterization: (0) Williams & Kasting, (1) CO2/N2, (2) CO2/H2, (3) lookup table, (4) New CO2/H2
       radfile = './radiation/radiation_N2_CO2_Sun.h5'
@@ -343,9 +351,39 @@ c SET UP INITIAL TEMPERATURE PROFILE
           ! differ only in whether pCO2 sits inside or on top of the bar
           ! (pg0 = 1.0 vs 1 + pCO2, i.e. 0.03% at pre-industrial CO2).
           pco2 = pg0*fco2
-          pn2  = pg0 - pco2
+          pch4 = pg0*fch4
+          pn2  = pg0 - pco2 - pch4
         end if
         call radiation_init( radfile )
+
+        ! Refuse a CH4 run against a table with no CH4 axis.  getOLR/getPALB
+        ! would otherwise clamp fch4 away and return CH4-free fluxes, giving a
+        ! plausible-looking climate that silently ignores the namelist.
+        if ( fch4 .gt. 0.0 .and. radiation_nch4() .lt. 1 ) then
+          print *, "driver: fch4 > 0 but this table has no CH4 axis"
+          print *, "  radfile = ", trim(radfile)
+          print *, "  rebuild with make_radiation_table.py --ch4-axis"
+          stop
+        end if
+
+        ! An fch4 past the end of the axis would be clamped by the table
+        ! bracket, modelling a different atmosphere than the namelist asked
+        ! for.  Below the axis floor is fine -- the floor is radiatively
+        ! indistinguishable from CH4-free by construction.
+        if ( radiation_nch4() .ge. 1 ) then
+          call radiation_ch4_range( ch4lo, ch4hi )
+          if ( fch4 .gt. ch4hi ) then
+            print *, "driver: fch4 is above the table's CH4 axis"
+            print *, "  fch4 =", fch4, " axis maximum =", ch4hi
+            stop
+          end if
+        end if
+        if ( fch4 .gt. 0.0 .and. do_h2_cycle ) then
+          print *, "driver: fch4 > 0 needs do_h2_cycle = .false."
+          print *, "  the H2 branch builds a CO2/H2 atmosphere with"
+          print *, "  pn2 = 0 and pch4 = 0, ignoring fch4 silently"
+          stop
+        end if
 
       else if (radparam .eq. 4 ) then
         pco2 = pg0*fco2
@@ -715,9 +753,10 @@ c    of 4.59 Wm^-2.)
 
         olrval = 0.0
         !lookup coordinates are the dry surface pressure in bar and the true
-        !CO2 mixing ratio, not pCO2 in bar
+        !CO2 and CH4 mixing ratios, not partial pressures in bar
         fco2rad = pco2/pg0
-        call getOLR( pg0, fco2rad, temp(k), olrval ) 
+        fch4rad = pch4/pg0
+        call getOLR( pg0, fco2rad, fch4rad, temp(k), olrval ) 
         ir(k) = olrval / 1000.
         if ( ir(k) .le. -1. ) then
           print *, "radiation_mod: OLR solution unstable"
@@ -1159,9 +1198,10 @@ c      as = .216
         zendeg = acos(mu(k))*180./pi
 
         !lookup coordinates are the dry surface pressure in bar and the true
-        !CO2 mixing ratio, not pCO2 in bar
+        !CO2 and CH4 mixing ratios, not partial pressures in bar
         fco2rad = pco2/pg0
-        call getPALB( pg0, fco2rad, temp(k), zendeg,
+        fch4rad = pch4/pg0
+        call getPALB( pg0, fco2rad, fch4rad, temp(k), zendeg,
      &                surfalb(k), atoa(k) )
 
         if ( atoa(k) .le. -1 ) then
@@ -1569,7 +1609,12 @@ c     !Carbonate-Silicate pCO2 update
 
         else if ( radparam .eq. 3 ) then
 
-          pg0  = pco2 + pn2
+          ! CH4 is held as a fixed inventory (pch4), like the N2 background,
+          ! rather than a fixed mixing ratio: with the CS cycle running, pg0
+          ! moves with pco2, so pinning fch4 instead would make pch4 depend on
+          ! a pg0 that depends on pch4.  fch4 = pch4/pg0 therefore drifts
+          ! slightly as pco2 evolves, which is what the radiation calls use.
+          pg0  = pco2 + pn2 + pch4
           fco2 = pco2 / pg0
 
         else if ( radparam .eq. 4 ) then
@@ -1615,8 +1660,8 @@ c     !Biological Productivity update to soil pCO2
 
 
 c  ADJUST DIFFUSION COEFFICIENT
-      avemol = mp*(28.0*pn2+44.*pco2 + 2.0*ph2)/(pg0) 
-      hcp = (hcpn2*pn2 + pco2*hcpco2 + hcph2*ph2)/(pg0)
+      avemol = mp*(28.0*pn2+44.*pco2 + 2.0*ph2 + 16.0*pch4)/(pg0) 
+      hcp = (hcpn2*pn2 + pco2*hcpco2 + hcph2*ph2 + hcpch4*pch4)/(pg0)
 
       if ( diffadj ) then
 c  The three factors are independent, and it is sometimes right to want only

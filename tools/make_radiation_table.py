@@ -7,13 +7,17 @@ WHAT THIS PRODUCES
 ------------------
 An HDF5 file readable by model/radiation/radiation.f90 (radparam = 3), holding
 
-    /olr       (npre, nco2, ntmp)                     outgoing longwave
-    /palb      (npre, nco2, ntmp, nzen, nsab)         planetary albedo
-    /pressure  (npre)    dry surface pressure pN2 + pCO2   [bar]
+    /olr       (npre, nco2, [nch4,] ntmp)             outgoing longwave
+    /palb      (npre, nco2, [nch4,] ntmp, nzen, nsab) planetary albedo
+    /pressure  (npre)    dry surface pressure pN2 + pCO2 + pCH4  [bar]
     /fco2      (nco2)    CO2 mixing ratio pCO2 / p_dry     [-]
+    /ch4       (nch4)    CH4 mixing ratio pCH4 / p_dry     [-]  (--ch4-axis only)
     /temperature (ntmp)  surface temperature               [K]
     /zenith    (nzen)    solar zenith angle                [degrees]
     /surfalb   (nsab)    broadband surface albedo          [-]
+
+Without --ch4-axis (or an explicit --ch4 list) the CH4 axis and its dataset are
+omitted entirely, giving a table byte-for-byte in the previous v2 layout.
 
 OLR is stored in mW/m^2 (W/m^2 x 1000) to match the historical v1 convention:
 driver.f divides the value returned by getOLR by 1000.
@@ -41,11 +45,21 @@ Runs are distributed over NWORKERS processes, each in its own scratch directory
 point is cached as a text file, so the script is resume-safe: re-running skips
 work already done.
 
+Cache files are named by the PHYSICAL VALUES of the column, not by axis index.
+Index names would be reused across a regrid -- change the CO2 axis from 14
+nodes to 11 and `col_000_005` still exists but now refers to a different CO2
+mixing ratio, so the resume would load the wrong physics into the new grid and
+report a full cache hit.  With value names a regridded axis simply misses and
+recomputes.  (Caches written before this change use the old index names and
+are ignored; tools/migrate_cache_names.py renames them given the table whose
+axes they were built on.)
+
 USAGE
 -----
     python tools/make_radiation_table.py [--out FILE] [--workers N]
                                          [--exe PATH] [--star FILE]
                                          [--cache DIR] [--dry-run]
+                                         [--ch4-axis | --ch4 LIST]
 
 The grid and the physical assumptions are the CONFIG block below.
 """
@@ -84,11 +98,31 @@ PRESSURES = np.array([0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0, 1.5,
                       2.0, 3.0, 5.0, 7.5, 10.0, 15.0, 20.0])
 
 # CO2 mixing ratio of dry air.  SAMOSA fixes CO2 at 400 ppm, but HEXTOR's
-# carbonate-silicate cycle needs the full range.  0.45 dex spacing: this axis
-# is the most forgiving of the five — halving the spacing to 0.30 dex buys
-# only 0.36 -> 0.19 W/m^2 of OLR interpolation error, well under the ~1 W/m^2
-# vertical-resolution uncertainty, and the axis multiplies the whole cost.
-FCO2 = np.logspace(-6.0, -0.3, 14)
+# carbonate-silicate cycle needs the full range.  This axis is the most
+# forgiving of the five, which is why it carries the coarsest spacing: measured
+# with CH4 present, 11 nodes (0.57 dex) leaves 0.57 W/m^2 in OLR and 0.0023 in
+# albedo, against 0.375 / 0.0015 for the 14 nodes (0.44 dex) used before the
+# CH4 axis existed -- both inside the ~1 W/m^2 and 0.003 budgets.  Since the
+# axis multiplies the whole build, the 11 nodes buy back 11 h of the CH4
+# axis's cost.  12 nodes (0.52 dex, 0.497 / 0.0020) is the middle option.
+FCO2 = np.logspace(-6.0, -0.3, 11)
+
+# CH4 mixing ratio of dry air, used only with --ch4-axis.  Spacing was
+# measured the same way as the other axes (see the note in notes/
+# ch4_lookup_table.md): over 1e-8 to 1e-1 the PLANETARY ALBEDO, not the OLR, is
+# what sets the node count, because CH4 absorbs in the near-infrared.  Against
+# a 0.25 dex reference under the solar SED, uniform 0.75 dex leaves 0.0061 in
+# albedo -- twice the zenith axis's 0.003 -- while the spacing below (1 dex up
+# to 1e-6, where the response is nearly flat, then 0.5 dex through the steep
+# part) holds 0.0023 in albedo and 0.50 W/m^2 in OLR on 13 nodes instead of 15.
+#
+# The floor is 1e-8, not zero, so that the log10 interpolation is well posed.
+# That is radiatively indistinguishable from CH4-free: at 1 bar, 400 ppm CO2
+# and 280 K, 1e-8 of CH4 moves OLR by 0.08 W/m^2 and the albedo by 1e-4.
+CH4_NODES = np.concatenate([
+    np.array([1.0e-8, 1.0e-7, 1.0e-6]),
+    np.logspace(-5.5, -1.0, 10),
+])
 
 # Surface temperature [K].
 TEMPERATURES = np.arange(180.0, 421.0, 10.0)
@@ -181,24 +215,30 @@ NML = """\
   n2_vmr   = {n2_vmr:.8e}
   o2_vmr   = 0.0
   ar_vmr   = 0.0
-  ch4_vmr  = 0.0
+  ch4_vmr  = {ch4_vmr:.8e}
   o3_vmr   = 0.0
 /
 """
 
 
 def build_namelist(pdry_bar, fco2, temps, star, sweepfile,
-                   mus=MU_NODES, albs=ALBEDOS, rh=RH, ptop_ratio=PTOP_RATIO):
-    """Render the ExoColumn namelist for one (p_dry, fCO2) column.
+                   mus=MU_NODES, albs=ALBEDOS, rh=RH, ptop_ratio=PTOP_RATIO,
+                   fch4=0.0):
+    """Render the ExoColumn namelist for one (p_dry, fCO2, fCH4) column.
 
     `temps` is the surface-temperature axis swept inside the single ExoColumn
     process (a scalar is accepted for the single-column diagnostic scripts).
     &exocol_init::ts is set to the first entry so that a build without the
     sweep_ts support still produces that column rather than failing silently.
+
+    N2 fills what CO2 and CH4 leave.  ExoColumn only WARNS when the dry VMRs
+    fail to sum to one and then uses them as given, so the fill has to be right
+    here: leaving CH4 out of it would quietly add its partial pressure on top
+    of p_dry and break the table's own pressure coordinate.
     """
     temps = np.atleast_1d(np.asarray(temps, dtype=float))
     ps_pa = pdry_bar * 1.0e5
-    n2_vmr = (1.0 - fco2) if N2_FILL else 1.0
+    n2_vmr = (1.0 - fco2 - fch4) if N2_FILL else 1.0
     return NML.format(
         star=star,
         h2o_eos=H2O_EOS,
@@ -216,6 +256,7 @@ def build_namelist(pdry_bar, fco2, temps, star, sweepfile,
         rh=rh,
         ps_pa=ps_pa,
         co2_vmr=fco2,
+        ch4_vmr=fch4,
         n2_vmr=n2_vmr,
     )
 
@@ -244,6 +285,19 @@ def _init_worker(workroot, exe):
     _WORKER['exe'] = exelink
 
 
+def cache_name(pdry, fco2, fch4=None):
+    """Cache file name for one column, keyed by its physical values.
+
+    Formatted to a fixed number of significant digits so the same grid point
+    always maps to the same name; see the note on index names in the module
+    docstring.
+    """
+    name = 'col_p%.6e_c%.6e' % (pdry, fco2)
+    if fch4 is not None:
+        name += '_m%.6e' % fch4
+    return name + '.txt'
+
+
 # Record layout written by exocol_sweep::run_flux_sweep.
 C_TS, C_PS, C_MWDRY, C_QSRF, C_MU, C_ALB, C_OLR, C_SWDN, C_SWUP, C_PALB = range(10)
 
@@ -269,17 +323,17 @@ def parse_sweep(path):
 
 
 def run_column(task):
-    """Run one (p_dry, fCO2) column over the whole temperature axis.
+    """Run one (p_dry, fCO2, fCH4) column over the whole temperature axis.
 
     Returns (key, olr[ntmp], palb[ntmp, nzen, nsab], err); on failure the
     arrays are None and err carries the reason.
     """
-    key, pdry, fco2, temps, star, cachefile = task
+    key, pdry, fco2, fch4, temps, star, cachefile = task
     wdir = _WORKER['dir']
     exe = _WORKER['exe']
     sweepfile = 'iofiles/sweep.txt'
 
-    nml = build_namelist(pdry, fco2, temps, star, sweepfile)
+    nml = build_namelist(pdry, fco2, temps, star, sweepfile, fch4=fch4)
     with open(os.path.join(wdir, 'exocol_config.nml'), 'w') as f:
         f.write(nml)
 
@@ -366,68 +420,105 @@ def main():
                          'validation tables)')
     ap.add_argument('--fco2', default=None,
                     help='comma-separated CO2 mixing ratios, overriding the grid')
+    ap.add_argument('--ch4-axis', action='store_true',
+                    help='resolve CH4 as a table axis on the built-in CH4_NODES '
+                         'grid, writing a /ch4 dataset.  Without this (and '
+                         'without --ch4) the table is CH4-free and carries no '
+                         'CH4 axis, exactly as before.')
+    ap.add_argument('--ch4', default=None,
+                    help='comma-separated CH4 mixing ratios to use as the CH4 '
+                         'axis, overriding CH4_NODES (implies --ch4-axis)')
     ap.add_argument('--temps', default=None,
                     help='comma-separated surface temperatures [K], '
                          'overriding the grid')
     args = ap.parse_args()
 
-    global PRESSURES, FCO2, TEMPERATURES
+    global PRESSURES, FCO2, TEMPERATURES, CH4_NODES
     if args.pressures:
         PRESSURES = np.array([float(x) for x in args.pressures.split(',')])
     if args.fco2:
         FCO2 = np.array([float(x) for x in args.fco2.split(',')])
     if args.temps:
         TEMPERATURES = np.array([float(x) for x in args.temps.split(',')])
+    if args.ch4:
+        CH4_NODES = np.array([float(x) for x in args.ch4.split(',')])
+
+    # A CH4-resolved table carries the axis; otherwise the run is CH4-free and
+    # the axis collapses to a single implicit level that is never written, so
+    # the output keeps the previous v2 layout byte for byte.
+    ch4_axis = bool(args.ch4_axis or args.ch4)
+    if ch4_axis:
+        if np.any(CH4_NODES <= 0.0):
+            print('CH4 axis levels must be positive: the axis is interpolated '
+                  'in log10, so use a small floor (1e-8) instead of zero')
+            return 2
+        CH4 = np.sort(CH4_NODES)
+    else:
+        CH4 = np.array([0.0])
 
     npre, nco2, ntmp = len(PRESSURES), len(FCO2), len(TEMPERATURES)
+    nch4 = len(CH4)
     nzen, nsab = len(MU_NODES), len(ALBEDOS)
-    ncase = npre * nco2 * ntmp
+    ncase = npre * nco2 * nch4 * ntmp
 
     zenith_deg = np.degrees(np.arccos(np.clip(MU_NODES, -1.0, 1.0)))
     order = np.argsort(zenith_deg)          # ascending zenith angle for getPALB
     zenith_deg = zenith_deg[order]
 
-    print('grid : npre=%d  nco2=%d  ntmp=%d  nzen=%d  nsab=%d'
-          % (npre, nco2, ntmp, nzen, nsab))
+    print('grid : npre=%d  nco2=%d  nch4=%d  ntmp=%d  nzen=%d  nsab=%d'
+          % (npre, nco2, nch4, ntmp, nzen, nsab))
     print('       %d grid points x %d (zenith x albedo) = %d radiation calls'
           % (ncase, nzen * nsab, ncase * nzen * nsab))
     print('       p_dry %.3g..%.3g bar   fco2 %.3g..%.3g   T %.0f..%.0f K'
           % (PRESSURES[0], PRESSURES[-1], FCO2[0], FCO2[-1],
              TEMPERATURES[0], TEMPERATURES[-1]))
-    # One ExoColumn process per (p_dry, fCO2) column, sweeping Ts internally.
-    ncol = npre * nco2
-    est = ncol * (1.6 + ntmp * nzen * nsab * 0.049) / max(args.workers, 1)
-    print('       %d ExoColumn processes (one per p_dry x fCO2 column)' % ncol)
+    if ch4_axis:
+        print('       fch4  %.3g..%.3g (%d levels)' % (CH4[0], CH4[-1], nch4))
+    else:
+        print('       fch4  none (CH4-free table, no /ch4 axis)')
+    # One ExoColumn process per (p_dry, fCO2, fCH4) column, sweeping Ts
+    # internally.  0.101 s per radiation call and 1.6 s of fixed ExoRT
+    # initialisation are what the 210-column Sun build actually measured
+    # (4.0 h of wall time on 4 workers); the older 0.049 s figure was optimistic.
+    ncol = npre * nco2 * nch4
+    est = ncol * (1.6 + ntmp * nzen * nsab * 0.101) / max(args.workers, 1)
+    print('       %d ExoColumn processes (one per p_dry x fCO2 x fCH4 column)'
+          % ncol)
     print('       estimated wall time on %d workers: %.1f h (before contention)'
           % (args.workers, est / 3600.0))
+    print('       estimated table size: %.0f MB'
+          % (npre * nco2 * nch4 * ntmp * (1 + nzen * nsab) * 8 / 1024.0**2))
     if args.dry_run:
         return 0
 
-    cache = args.cache or (args.out + '.cache')
-    work = args.work or os.path.join(cache, 'work')
+    cache = os.path.abspath(args.cache or (args.out + '.cache'))
+    work = os.path.abspath(args.work or os.path.join(cache, 'work'))
     os.makedirs(cache, exist_ok=True)
     os.makedirs(work, exist_ok=True)
 
-    olr = np.full((npre, nco2, ntmp), np.nan)
-    palb = np.full((npre, nco2, ntmp, nzen, nsab), np.nan)
+    olr = np.full((npre, nco2, nch4, ntmp), np.nan)
+    palb = np.full((npre, nco2, nch4, ntmp, nzen, nsab), np.nan)
 
     # Collect the work, reusing any cached columns.
     tasks = []
     ncached = 0
     for ip in range(npre):
         for ic in range(nco2):
-            key = (ip, ic)
-            cachefile = os.path.join(cache, 'col_%03d_%03d.txt' % key)
-            if os.path.exists(cachefile):
-                head, rows = parse_sweep(cachefile)
-                o, p, err = assemble_column(rows, TEMPERATURES)
-                if err is None:
-                    olr[ip, ic] = o
-                    palb[ip, ic] = p
-                    ncached += 1
-                    continue
-            tasks.append((key, float(PRESSURES[ip]), float(FCO2[ic]),
-                          TEMPERATURES, args.star, cachefile))
+            for im in range(nch4):
+                key = (ip, ic, im)
+                cachefile = os.path.join(cache, cache_name(
+                    PRESSURES[ip], FCO2[ic], CH4[im] if ch4_axis else None))
+                if os.path.exists(cachefile):
+                    head, rows = parse_sweep(cachefile)
+                    o, p, err = assemble_column(rows, TEMPERATURES)
+                    if err is None:
+                        olr[ip, ic, im] = o
+                        palb[ip, ic, im] = p
+                        ncached += 1
+                        continue
+                tasks.append((key, float(PRESSURES[ip]), float(FCO2[ic]),
+                              float(CH4[im]), TEMPERATURES, args.star,
+                              cachefile))
 
     print('       %d columns cached, %d to run' % (ncached, len(tasks)))
 
@@ -456,28 +547,49 @@ def main():
     if nbad:
         print('WARNING: %d of %d grid points have no OLR' % (nbad, olr.size))
         for key, err in failures[:20]:
-            ip, ic = key
-            print('   p=%.3g fco2=%.3g : %s' % (PRESSURES[ip], FCO2[ic], err))
+            ip, ic, im = key
+            print('   p=%.3g fco2=%.3g fch4=%.3g : %s'
+                  % (PRESSURES[ip], FCO2[ic], CH4[im], err))
         if len(failures) > 20:
             print('   ... and %d more' % (len(failures) - 20))
 
     # Reorder the zenith axis to ascending degrees and convert to table units.
-    palb = palb[:, :, :, order, :]
+    palb = palb[:, :, :, :, order, :]
     olr_mw = olr * 1000.0     # W/m^2 -> mW/m^2 (v1 convention; see radiation.f90)
+
+    # A CH4-free build drops the degenerate CH4 dimension so the file is the
+    # v2 layout the reader already knows, with no /ch4 dataset to detect.
+    if not ch4_axis:
+        olr_mw = olr_mw[:, :, 0, :]
+        palb = palb[:, :, 0, :, :, :]
 
     with h5py.File(args.out, 'w') as f:
         f.create_dataset('olr', data=olr_mw)
         f.create_dataset('palb', data=palb)
         f.create_dataset('pressure', data=PRESSURES)
         f.create_dataset('fco2', data=FCO2)
+        if ch4_axis:
+            f.create_dataset('ch4', data=CH4)
         f.create_dataset('temperature', data=TEMPERATURES)
         f.create_dataset('zenith', data=zenith_deg)
         f.create_dataset('surfalb', data=ALBEDOS)
-        f.attrs['format'] = 'hextor-radiation-v2'
+        f.attrs['format'] = ('hextor-radiation-v3' if ch4_axis
+                             else 'hextor-radiation-v2')
         f.attrs['source'] = 'ExoColumn (flux_only + sweep_mode) / ExoRT n68equiv'
         f.attrs['star'] = args.star
         f.attrs['olr_units'] = 'mW m-2 (divide by 1000 for W m-2)'
-        f.attrs['pressure_units'] = 'bar, DRY surface pressure (pN2 + pCO2)'
+        f.attrs['pressure_units'] = \
+            'bar, DRY surface pressure (pN2 + pCO2 + pCH4)'
+        if ch4_axis:
+            f.attrs['ch4'] = ('CH4 mixing ratio of dry air; log10-interpolated. '
+                              'The %.0e floor stands in for CH4-free (worth '
+                              '0.08 W/m2 in OLR).' % CH4[0])
+            # Organic haze is the known gap at the top of this axis: ExoRT's
+            # calc_opd_mod.F90 carries no haze optics (only a note to hook up
+            # CARMA aerosols), so a real Archean atmosphere above CH4/CO2 ~ 0.1
+            # would have an anti-greenhouse the table cannot represent.
+            f.attrs['ch4_caveat'] = ('clear sky, no organic haze: biased warm '
+                                     'where CH4/CO2 exceeds ~0.1')
         f.attrs['water'] = ('variable_ps: total ps = p_dry + esat(Ts); '
                             'prescribed moist adiabat, RH = %.2f' % RH)
         f.attrs['t_strato'] = 'min(%.1f K, Ts)' % T_STRATO_REF

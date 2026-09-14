@@ -35,10 +35,10 @@ call radiation_init( "./radiation_N2_CO2_Sun.h5" )
     fco2 = 2.8e-2
     tg0 = 288
 
-    call getOLR( pg0, fco2, tg0, olr )
+    call getOLR( pg0, fco2, 0.0, tg0, olr )
     print *, olr / 1000.
 
-    call getPALB( pg0, fco2, tg0, zy, surfalb, palb )
+    call getPALB( pg0, fco2, 0.0, tg0, zy, surfalb, palb )
     print *, palb
   
 !  end do

@@ -14,3 +14,14 @@ experiments*
 samosa/
 namelists/old*
 __pycache__/
+
+# Radiation-table build artifacts.  The per-column ExoColumn cache is ~48 KB
+# per grid point (a CH4-resolved table has thousands), and the build log is a
+# progress trace; both are reproducible from the table itself.  Note the
+# tables themselves are deliberately NOT ignored here: the small ones are
+# tracked.  A CH4-resolved table is ~45 MB, which is past what belongs in git.
+model/radiation/*.h5.cache/
+model/radiation/build_*.log
+
+# Scratch runs from tools/calibrate_earth.py (resume cache).
+calibrate_earth_runs/
