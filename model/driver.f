@@ -168,6 +168,17 @@ c  NAMELIST PARAMETERS
 c  INITIALIZE VARIABLES
       total = 0
       ann_tempave = 10.         !just some constant greater than zero
+c  Annual accumulators.  These are reset at label 790 after each year, but
+c  that leaves the first year adding onto uninitialized memory, which made
+c  the year-0 row of tempseries.out depend on the variable layout.
+      fluxavesum = 0.
+      albavesum = 0.
+      tempavesum = 0.
+      iravesum = 0.
+      wthratesum = 0.
+      co2cldavesum = 0.
+      nstep = 0
+      t = 0
       seasons = .true.     !if .true. do seasons: otherwise do mean-annual
       last = .false.       !should always be .false.
       do_stochastic = .false. !if .true. then include stochastic perturbation
