@@ -85,7 +85,12 @@ EXOCOL_ROOT = '/models/ExoColumn'
 # (10 bar, Ts = 360 K) is 255.6 / 253.1 / 252.5 / 252.1 W/m^2 for 70 / 140 /
 # 200 / 400 layers, so 200 sits within ~1 W/m^2 of the converged OLR at ~6 s
 # per grid point; see tools/check_table_convergence.py.
-DEFAULT_EXE = os.path.join(EXOCOL_ROOT, 'run', 'exocol_sweepts200.exe')
+#
+# exocol_sweepts200_psrh.exe adds &exocol_nml::variable_ps_rh (written below
+# only when RH < 1).  With the switch off it reproduces exocol_sweepts200.exe
+# bit for bit (all sweep records, RH 1 and 0.8, verified 2026-09-15), so it is a
+# drop-in replacement for every build.
+DEFAULT_EXE = os.path.join(EXOCOL_ROOT, 'run', 'exocol_sweepts200_psrh.exe')
 
 # Host-star SED, as an ExoRT n68 solar file name (data/solar/ in ExoRT).
 # 'blackbody_3000K_n68.nc' is the SAMOSA host star; 'G2V_SUN_n68.nc' is the Sun.
@@ -239,7 +244,7 @@ def build_namelist(pdry_bar, fco2, temps, star, sweepfile,
     temps = np.atleast_1d(np.asarray(temps, dtype=float))
     ps_pa = pdry_bar * 1.0e5
     n2_vmr = (1.0 - fco2 - fch4) if N2_FILL else 1.0
-    return NML.format(
+    nml = NML.format(
         star=star,
         h2o_eos=H2O_EOS,
         continuum=H2O_CONTINUUM,
@@ -259,6 +264,17 @@ def build_namelist(pdry_bar, fco2, temps, star, sweepfile,
         ch4_vmr=fch4,
         n2_vmr=n2_vmr,
     )
+    if rh < 1.0:
+        # Sub-saturated column: carry rh*esat, not esat, on top of p_dry, so
+        # the column's dry mass is p_dry (the table's pressure coordinate) and
+        # the surface vapour matches HEXTOR's moist static energy diffusion.
+        # Without it the pressure coordinate holds (1-rh)*esat(Ts) of extra dry
+        # gas: up to 7x the real dry gas in a 0.05 bar column at 390 K.
+        nml = nml.replace('  variable_ps     = .true.\n',
+                          '  variable_ps     = .true.\n'
+                          '  variable_ps_rh  = .true.\n')
+        assert 'variable_ps_rh' in nml
+    return nml
 
 
 # ---------------------------------------------------------------------------
@@ -285,16 +301,20 @@ def _init_worker(workroot, exe):
     _WORKER['exe'] = exelink
 
 
-def cache_name(pdry, fco2, fch4=None):
+def cache_name(pdry, fco2, fch4=None, rh=1.0):
     """Cache file name for one column, keyed by its physical values.
 
     Formatted to a fixed number of significant digits so the same grid point
     always maps to the same name; see the note on index names in the module
-    docstring.
+    docstring.  A sub-saturated column carries its RH in the name, so a build
+    pointed at an RH = 1 cache cannot silently reuse saturated columns (RH = 1
+    names are unchanged, keeping existing caches valid).
     """
     name = 'col_p%.6e_c%.6e' % (pdry, fco2)
     if fch4 is not None:
         name += '_m%.6e' % fch4
+    if rh != 1.0:
+        name += '_rh%.4f' % rh
     return name + '.txt'
 
 
@@ -328,12 +348,12 @@ def run_column(task):
     Returns (key, olr[ntmp], palb[ntmp, nzen, nsab], err); on failure the
     arrays are None and err carries the reason.
     """
-    key, pdry, fco2, fch4, temps, star, cachefile = task
+    key, pdry, fco2, fch4, temps, star, cachefile, rh = task
     wdir = _WORKER['dir']
     exe = _WORKER['exe']
     sweepfile = 'iofiles/sweep.txt'
 
-    nml = build_namelist(pdry, fco2, temps, star, sweepfile, fch4=fch4)
+    nml = build_namelist(pdry, fco2, temps, star, sweepfile, fch4=fch4, rh=rh)
     with open(os.path.join(wdir, 'exocol_config.nml'), 'w') as f:
         f.write(nml)
 
@@ -431,7 +451,14 @@ def main():
     ap.add_argument('--temps', default=None,
                     help='comma-separated surface temperatures [K], '
                          'overriding the grid')
+    ap.add_argument('--rh', type=float, default=RH,
+                    help='tropospheric relative humidity of the prescribed '
+                         'column (default %.2f).  Match HEXTOR\'s rhmoist when '
+                         'the EBM diffuses moist static energy.' % RH)
     args = ap.parse_args()
+    if not 0.0 < args.rh <= 1.0:
+        print('--rh must be in (0, 1]')
+        return 2
 
     global PRESSURES, FCO2, TEMPERATURES, CH4_NODES
     if args.pressures:
@@ -476,6 +503,7 @@ def main():
         print('       fch4  %.3g..%.3g (%d levels)' % (CH4[0], CH4[-1], nch4))
     else:
         print('       fch4  none (CH4-free table, no /ch4 axis)')
+    print('       RH    %.2f' % args.rh)
     # One ExoColumn process per (p_dry, fCO2, fCH4) column, sweeping Ts
     # internally.  0.101 s per radiation call and 1.6 s of fixed ExoRT
     # initialisation are what the 210-column Sun build actually measured
@@ -507,7 +535,8 @@ def main():
             for im in range(nch4):
                 key = (ip, ic, im)
                 cachefile = os.path.join(cache, cache_name(
-                    PRESSURES[ip], FCO2[ic], CH4[im] if ch4_axis else None))
+                    PRESSURES[ip], FCO2[ic], CH4[im] if ch4_axis else None,
+                    rh=args.rh))
                 if os.path.exists(cachefile):
                     head, rows = parse_sweep(cachefile)
                     o, p, err = assemble_column(rows, TEMPERATURES)
@@ -518,7 +547,7 @@ def main():
                         continue
                 tasks.append((key, float(PRESSURES[ip]), float(FCO2[ic]),
                               float(CH4[im]), TEMPERATURES, args.star,
-                              cachefile))
+                              cachefile, args.rh))
 
     print('       %d columns cached, %d to run' % (ncached, len(tasks)))
 
@@ -590,8 +619,16 @@ def main():
             # would have an anti-greenhouse the table cannot represent.
             f.attrs['ch4_caveat'] = ('clear sky, no organic haze: biased warm '
                                      'where CH4/CO2 exceeds ~0.1')
-        f.attrs['water'] = ('variable_ps: total ps = p_dry + esat(Ts); '
-                            'prescribed moist adiabat, RH = %.2f' % RH)
+        if args.rh < 1.0:
+            f.attrs['water'] = ('variable_ps + variable_ps_rh: total ps = p_dry '
+                                '+ RH*esat(Ts), dry mass = p_dry; saturated moist '
+                                'adiabat in the non-condensable pressure, '
+                                'vapour RH*esat(T), RH = %.2f' % args.rh)
+        else:
+            f.attrs['water'] = ('variable_ps: total ps = p_dry + esat(Ts); '
+                                'prescribed moist adiabat, RH = %.2f' % args.rh)
+        f.attrs['rh'] = args.rh
+        f.attrs['exocolumn_exe'] = os.path.basename(args.exe)
         f.attrs['t_strato'] = 'min(%.1f K, Ts)' % T_STRATO_REF
         f.attrs['p_top_ratio'] = PTOP_RATIO
         f.attrs['h2o_eos'] = H2O_EOS
