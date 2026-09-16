@@ -69,6 +69,8 @@ c----------------------------------------------------------------------c
       parameter (mp=1.67e-24,cnvg=1.e-1)
       parameter (sbc=5.67e-8,emis=0.64)
       parameter (twopi=2*pi)
+      parameter (xlv=2.501e6)      !latent heat of vaporization (J/kg)
+      parameter (rearth=6.371e6)   !Earth radius (m), for transport.out
       !parameter (niter=1)
       !parameter (niter=300000)
       !parameter (niter=1200000)  ! for do_futuresol and yrstep = 1.e3 (future Earth to 1.2 Gyr from present)
@@ -117,6 +119,12 @@ c----------------------------------------------------------------------c
       logical fillet, do_dailyoutput, do_futuresol, do_bioprod
       logical haltonCO2cond
       logical diffadj_rot
+      logical moistdiff
+      real rhmoist, cpmoist, epsmoist, ph2moist, xedge
+      real esatw, qmoist
+      integer ntrans
+      dimension  tmoist(0:nbelts+1), ftrans(0:nbelts),
+     &  flatent(0:nbelts)
       real landsnowfrac, RAND, boxmuller, noisevar, heatcap, ocnalb
       real outgassing, weathering, betaexp, kact, krun, q0
       real pg0, ir2, fh2, co2sat, h2escape, ph2, ncolh2, h2outgas
@@ -145,7 +153,7 @@ c----------------------------------------------------------------------c
      &               iterhalt, fco2, fh2, fch4, pg0, tempinit, msun,
      &               do_longitudinal, do_manualseasons,
      &               cl, cw, ci, do_dailyoutput, fillet,
-     &               haltonCO2cond, fluxcnvg
+     &               haltonCO2cond, fluxcnvg, moistdiff, rhmoist
 
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
@@ -233,6 +241,8 @@ c  the year-0 row of tempseries.out depend on the variable layout.
       constheatcap = .false. ! set .true. for constant heat capacity
       diffadj = .true.  ! set .false. to turn off diffusion parameter adjustment
       diffadj_rot = .true. ! set .false. to drop the (rot0/rot)^2 term from diffadj
+      moistdiff = .false. ! set .true. to diffuse moist static energy, not T
+      rhmoist = 0.8       ! relative humidity of the diffused moisture (moistdiff)
       cloudalb = .true. ! set .false. to disable cloud albedo
       iterhalt = .false.  ! set .true. to enable halt based on iterations
       fluxcnvg = 0.1      ! OLR convergence threshold (W/m²) for iterhalt mode
@@ -253,6 +263,9 @@ c  the year-0 row of tempseries.out depend on the variable layout.
       pch4 = 0.0        ! CH4 partial pressure (bars).  Set here as well as in
                         ! the radparam = 3 branch because avemol and hcp use it
                         ! for every radparam, and only that branch assigns it.
+      ph2 = 0.0         ! H2 partial pressure (bars).  Same reason: radparam = 3
+                        ! without do_h2_cycle never assigns it, and it had
+                        ! only been zero by accident of the memory layout.
       h2outgas = 2.67e12
       radparam = 4      ! OLR/albedo parameterization: (0) Williams & Kasting, (1) CO2/N2, (2) CO2/H2, (3) lookup table, (4) New CO2/H2
       radfile = './radiation/radiation_N2_CO2_Sun.h5'
@@ -305,6 +318,7 @@ c  OPEN FILES
       if ( fillet ) then
         open (unit=50,file='out/fillet.out',status='unknown')
         open (unit=51,file='out/fillet_global.out',status='unknown')
+        open (unit=52,file='out/transport.out',status='unknown')
       end if
 
 c  WRITE OBLIQUITY TO OUTPUT
@@ -634,9 +648,42 @@ c  **THE BIG LOOP**
 c----------------------------------------------------------------------c
 c  FINITE DIFFERENCING - ATMOSPHERIC and OCEANIC ADVECTIVE HEATING 
 
+      if ( moistdiff ) then
+c  Moist static energy diffusion (Frierson, Held & Zurita-Gotor 2007;
+c  Hwang & Frierson 2010): diffuse h/cp = T + (L/cp) q instead of T, so
+c  latent heat transport follows Clausius-Clapeyron.  q is the surface
+c  specific humidity at relative humidity rhmoist.  D keeps its units
+c  (W/m^2 per K of h/cp), and rhmoist = 0 recovers dry diffusion.
+        ph2moist = 0.
+        if ( do_h2_cycle .or. radparam .eq. 2 .or. radparam .eq. 4 )
+     &    ph2moist = ph2
+        call moistprops( pn2, pco2, ph2moist, pch4, cpmoist, epsmoist )
+        do k = 0, nbelts+1, 1
+          tmoist(k) = temp(k) + (xlv/cpmoist)*
+     &      qmoist( temp(k), pg0, epsmoist, rhmoist )
+        end do
+        do k = 0, nbelts, 1
+          tprime(k) = (tmoist(k+1) - tmoist(k))/dx(k)
+        end do
+      else
       do 300 k=0,nbelts,1   !**first derivatives between grid points
          tprime(k) = (temp(k+1) - temp(k))/dx(k)
  300  continue
+      end if
+
+c  Accumulate the final orbit's poleward heat transport at the belt
+c  edges (written to out/transport.out).  Northward transport across a
+c  latitude circle is -2 pi R^2 D (1-x^2) d(h/cp)/dx; the latent part is
+c  what the moisture term adds to the dry temperature gradient.
+      if ( last ) then
+        ntrans = ntrans + 1
+        do k = 1, nbelts-1, 1
+          xedge = 0.5*(x(k) + x(k+1))
+          ftrans(k) = ftrans(k) - diff(k)*(1 - xedge**2)*tprime(k)
+          flatent(k) = flatent(k) - diff(k)*(1 - xedge**2)*
+     &      (tprime(k) - (temp(k+1) - temp(k))/dx(k))
+        end do
+      end if
 
       do 310 k=1,nbelts,1   !**start belt loop 
                             !**first derivatives at grid points
@@ -1733,7 +1780,16 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
  754       format(f5.1,1x,f6.2,1x,f4.2,1x,f4.2,1x,f6.2)
          end if
  750  continue
-      
+
+      if ( fillet ) then
+        do k = 1, nbelts-1, 1
+          write(52,757) asin(0.5*(x(k) + x(k+1)))*180./pi,
+     &      2.*pi*rearth**2*ftrans(k)/ntrans/1.e15,
+     &      2.*pi*rearth**2*flatent(k)/ntrans/1.e15
+ 757      format(f6.2,1x,f8.4,1x,f8.4)
+        end do
+      end if
+
  755  format(/ 'SURFACE DATA')
  756  format(2x,'latitude(deg)',2x,'temp(k)',2x,'belt area',
      &  2x,'weathering area',2x,'zonal weathering rate (g/yr)')
@@ -1929,12 +1985,19 @@ c  WRAP UP
       write(15,1016) 'thermal diffusion coefficient (D) = ', d, 
      & ' Watts/m^2 K'
  1016 format(3x,a,e8.3,a)
+      if ( moistdiff ) write(15,1017) rhmoist
+ 1017 format(3x,'moist static energy diffusion, rhmoist = ',f5.3)
       write(15,1020) 'convergence to final temperature profile in ',
      & tcalc, ' seconds'
  1020 format(3x,a,e9.3,a)
 
 c  LOOP ONE MORE TIME, AND WRITE OUTPUT TO FILES
       last = .TRUE.
+      ntrans = 0
+      do k = 0, nbelts, 1
+        ftrans(k) = 0.
+        flatent(k) = 0.
+      end do
 
 c  initialize zntempmin matrix
 
@@ -1955,6 +2018,9 @@ c
         write(51,1138)
  1138   format(/ '# Case Inst Obl XCO2 Tglob IceLineNMax IceLineNMin 
      &IceLineSMax IceLineSMin Diff OLRglob')
+        write(52,1139)
+ 1139   format('# LatEdge(deg) Fnorth(PW) Flatent(PW)',
+     &         '  [annual mean, Earth radius]')
       end if
 
  1100 format(/ 'OUTPUT FILES')
@@ -2215,3 +2281,58 @@ C   (Altered to match vapor pressure over liquid at triple point)
       PSCO2 = 1.013*PATM 
       RETURN
       END
+
+c------------------------------------------------------------------
+c Moist static energy diffusion helpers (moistdiff = .true.)
+c------------------------------------------------------------------
+
+      subroutine moistprops( pn2, pco2, ph2, pch4, cpd, eps )
+c  Specific heat of dry air cpd [J/kg/K] and eps = Mw/Md, the ratio of
+c  the molecular weights of water and dry air, for a dry composition
+c  given as partial pressures [bar].  cpd is mass-weighted; the diffadj
+c  hcp in the main program weights by partial pressure instead, which
+c  differs by ~2% for a CO2-rich atmosphere.
+      real pn2, pco2, ph2, pch4, cpd, eps
+      real wn2, wco2, wh2, wch4, wsum
+      wn2  = 28.0*pn2
+      wco2 = 44.0*pco2
+      wh2  = 2.0*ph2
+      wch4 = 16.0*pch4
+      wsum = wn2 + wco2 + wh2 + wch4
+      cpd = 4184.*(0.2484*wn2 + 0.2105*wco2 + 3.420*wh2
+     &      + 0.5271*wch4)/wsum
+      eps = 18.016*(pn2 + pco2 + ph2 + pch4)/wsum
+      return
+      end
+
+      real function esatw( t )
+c  Saturation vapour pressure of water [Pa], matching the steam mode
+c  ExoColumn used to build the radiation tables (exocol_convadj.F90,
+c  esat): Wagner & Pruss (2002) over liquid from the triple point to
+c  the critical point, and Clausius-Clapeyron over ice below it.
+      real t, tuse, th
+      if ( t .lt. 273.16 ) then
+        tuse = max( t, 50. )
+        esatw = 611.2*exp( (2.8347e6/461.50)*(1./273.16 - 1./tuse) )
+      else
+        tuse = min( t, 647.096 )
+        th = 1. - tuse/647.096
+        esatw = 22.064e6*exp( (647.096/tuse)*( -7.85951783*th
+     &    + 1.84408259*th**1.5 - 11.7866497*th**3
+     &    + 22.6807411*th**3.5 - 15.9618719*th**4
+     &    + 1.80122502*th**7.5 ) )
+      end if
+      return
+      end
+
+      real function qmoist( t, pdry, eps, rh )
+c  Specific humidity [kg/kg] at relative humidity rh over a dry surface
+c  pressure pdry [bar].  The vapour pressure e = rh*esat(T) sits on top
+c  of the dry air, as in the radiation tables (variable_ps), so the
+c  vapour-to-dry-air mass ratio is r = eps*e/pdry and q = r/(1+r).
+      real t, pdry, eps, rh, e, r, esatw
+      e = rh*esatw( t )
+      r = eps*e/(pdry*1.e5)
+      qmoist = r/(1. + r)
+      return
+      end
