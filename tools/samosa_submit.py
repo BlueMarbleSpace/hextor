@@ -135,10 +135,33 @@ def main():
         f.write('#   zenith angle and surface albedo. CO2 is a fixed partial\n')
         f.write('#   pressure of 400 ubar (2024 erratum), so the CO2 mixing ratio\n')
         f.write('#   falls as the N2 pressure rises; Pres is the N2 pressure.\n')
-        f.write('#   Clear sky: HEXTOR has no\n')
-        f.write('#   clouds, and no vertical dimension, water vapor or ice thickness,\n')
-        f.write('#   so Qstrat, Qmass, Icethick, Cldliq, Cldice and Cldfrac are NaN.\n')
-        if cfg is not None:
+        if cfg is not None and cfg.get('rh_table'):
+            f.write('#   Each table column is a prescribed moist adiabat at relative\n')
+            f.write('#   humidity %s with an isothermal min(200 K, Ts) stratosphere.\n'
+                    % cfg['rh_table'])
+        if cfg is not None and str(cfg.get('moistdiff', '')).lower() == 'true':
+            f.write('#   Heat transport diffuses moist static energy h/cp = T +\n')
+            f.write('#   (L/cp) q at relative humidity %s (Frierson et al. 2007),\n'
+                    % cfg.get('rhmoist', '?'))
+            f.write('#   so latent transport follows Clausius-Clapeyron; q is the\n')
+            f.write('#   surface specific humidity over the dry surface pressure.\n')
+        f.write('#   Clear sky: HEXTOR has no clouds, and no vertical dimension,\n')
+        f.write('#   water vapor or ice thickness, so Qstrat, Qmass, Icethick,\n')
+        f.write('#   Cldliq, Cldice and Cldfrac are NaN.\n')
+        if cfg is not None and cfg.get('cloud_scaling') == 'instellation':
+            # cfg is the last reported case, so its cloudir is that case's
+            # scaled value; describe the rule and its reference value instead.
+            cref = -float(cfg['cloudir_ref'])
+            f.write('#   Diffusion D = %s W/m^2/K (constant). Clouds enter as a\n'
+                    % cfg.get('d0', '?'))
+            f.write('#   uniform increase in OLR of %.1f W/m^2 x S/900, a cooling\n'
+                    % cref)
+            f.write('#   standing in for the cloud shortwave effect, scaled with\n')
+            f.write('#   instellation (equivalent to +%.2f in planetary albedo).\n'
+                    % (cref / 225.0))
+            f.write('#   D and the %.1f W/m^2 at S = 900 W/m^2 are calibrated\n' % cref)
+            f.write('#   against the THAI Hab 1 GCM ensemble for TRAPPIST-1 e.\n')
+        elif cfg is not None:
             f.write('#   Diffusion D = %s W/m^2/K (constant); cloud infrared\n'
                     % cfg.get('d0', '?'))
             f.write('#   correction to OLR = %s W/m^2, both calibrated against the\n'

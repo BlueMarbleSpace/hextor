@@ -61,12 +61,24 @@
 !                   compensates for that table's biases rather than for
 !                   clouds, and none of it was fitted over 0.1-10 bar or
 !                   400-2400 W/m2.
-!   d0 / diffadj    Two ways to make heat transport scale with pressure, both
-!                   supported by tools/run_samosa.py:
-!                     --no-diffadj (default): diffadj = .false. and the runner
-!                       sets d0 = d0_ref * pg0 per case.  Transport per bar is
-!                       carried over from the THAI calibration unchanged.
-!                     --diffadj: HEXTOR's own scaling (driver.f:1603),
+!                   SCALING: a fixed W/m2 offset is too strong a cooling at
+!                   low instellation (45 W/m2 is 45% of the absorbed flux at
+!                   S = 500) and too weak at high.  run_samosa.py
+!                   --cloud-scaling instellation writes cloudir = cloudir_ref
+!                   * S/900 per case, anchored at the THAI Hab1 instellation,
+!                   so the calibration point is unchanged and the offset
+!                   behaves as a fixed planetary-albedo increment
+!                   (-cloudir_ref/225, 0.20 for -45), still uniform over the
+!                   planet.  The default, constant, keeps cloudir as given.
+!   d0 / diffadj    Selected by run_samosa.py --transport.  The runner never
+!                   pre-multiplies d0; any pressure dependence comes from the
+!                   driver's diffadj:
+!                     constant: diffadj = .false., D = d0 in every case.  This
+!                       is what the SAMOSA submission uses (D = 3.33).
+!                     perbar: diffadj = .true., diffadj_rot = .false.,
+!                       D = d0 * pg0 * composition (d0_ref 3.0262 gives 3.33
+!                       at 1 bar).
+!                     diffadj: HEXTOR's own full scaling (driver.f:1603),
 !                       d = d0 * pg0 * (avemol0/avemol)^2 * (hcp/hcp0) *
 !                       (rot0/rot)^2.  Same linear pressure dependence, ~1.10
 !                       from composition, and a ROTATION factor of 37 for
@@ -76,21 +88,17 @@
 !                       term is standard EBM physics (slower rotation, weaker
 !                       Coriolis, more efficient transport), so which option is
 !                       right is a physical question, not a bookkeeping one.
-!                     --diffadj --no-rot-scaling: diffadj = .true. with
-!                       diffadj_rot = .false., i.e. keep the pressure and
-!                       composition scaling and drop the rotation factor.
-!                       With SAMOSA's fixed composition this reproduces the
-!                       first option exactly, but it expresses the choice
-!                       through the model rather than by pre-multiplying d0,
-!                       and it differs whenever composition varies.
 !                   Either way d0_ref is the single most important free
 !                   parameter in this configuration.
 !   tend            Set by the runner (--years, default 200).  The published
-!                   7e11 s is ~22,000 model years, which is far more than any
-!                   of these cases needs -- equilibria converge in 15-60 -- and
-!                   becomes a problem once dt is reduced for stability: a
-!                   runaway case at dt = 100 s would spend hours integrating
-!                   toward a temperature that does not exist.
+!                   7e11 s is ~22,000 model years, far more than any of these
+!                   cases needs -- equilibria converge in 15-60.  Note that
+!                   tend does NOT end a seasonal run: the halt in that branch
+!                   is commented out (driver.f:593-600), so reaching tend only
+!                   stops the orbital clock and the integration continues to
+!                   flux convergence or to niter = 5000.  These cases are
+!                   synchronous with zero obliquity and eccentricity, so a
+!                   frozen orbital clock changes nothing about the insolation.
 !   dt              Set PER CASE by the runner from a diffusion stability
 !                   limit, capped at the published 1350 s.  HEXTOR integrates
 !                   the diffusion term explicitly on 18 belts in x = sin(lat),
@@ -100,6 +108,18 @@
 !                   integrates to NaN after 5000 years rather than failing.
 !                   Verified: the same case gives NaN at 1350 s, 289.34 K at
 !                   400 s and 289.35 K at 135 s.
+!   moistdiff       Set by the runner (--moistdiff).  With it the model
+!                   diffuses moist static energy h/cp = T + (L/cp) q at
+!                   relative humidity rhmoist instead of temperature, so
+!                   latent heat transport follows Clausius-Clapeyron.  That is
+!                   the configuration the RH < 1 radiation tables are built
+!                   for: rhmoist should match the table's own RH attribute.
+!                   It matters most here, where the day-night contrast is the
+!                   whole point -- a saturated dayside exports latent heat to
+!                   the night side that dry diffusion cannot carry.  It also
+!                   tightens the timestep by beta = d(h/cp)/dT, which is 3.5 at
+!                   300 K and 13 at 343 K, so dt is divided by the beta of the
+!                   substellar belt (tools/moist_stability.py).
 !   heat capacity   constheatcap = .true. with heatcap = 4.00e6, the published
 !                   TRAPPIST-1 value.  The protocol specifies a 50 m slab
 !                   (2.1e8 J/m2/K), but heat capacity sets only the approach to
@@ -134,7 +154,9 @@
    iterhalt     = .true.,
    do_longitudinal = .true.,
    haltonCO2cond = .false.,
-   fluxcnvg      = 5.e-4 /
+   moistdiff     = {moistdiff},
+   rhmoist       = {rhmoist},
+   fluxcnvg      = {fluxcnvg} /
 ! fluxcnvg is tightened from the published 0.005 because at 0.005 these cases
 ! halt with the global mean still drifting ~0.2 K/decade; 5e-4 costs only a few
 ! extra model years and brings the drift to ~0.03 K/decade.  Note it does NOT
