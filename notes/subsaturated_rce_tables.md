@@ -158,6 +158,14 @@ failed; the build took 2 h 56 min):**
   request** with 56 of 2145 columns cached. Resume by re-running the same
   command (`--ch4-axis --star G2V_SUN_n68.nc --rh 0.8 --out
   model/radiation/radiation_N2_CO2_CH4_Sun_p_rh0.8.h5 --workers 4`).
+  **Resumed 2026-09-16 13:38** and **finished 2026-09-18 02:40** (2089 columns,
+  0 failed; `check_table_sanity` OK, soft exceptions in line with the RH 1
+  table). Moist RH 0.8 Earth calibration on it at 730 ppb CH4: `d0 = 0.2817,
+  fcloud = 0.4351, cloudir = 17.309`, RMSE 1.99 K, PI CH4 worth +2.59 K.
+  All three RH 0.8 tables (Sun, Sun+CH4, 3000 K; plus the 2600 K one from
+  another session) now exist. A chained job then runs `check_table_sanity` and the moist
+  RH 0.8 Earth calibration at 730 ppb CH4 into ebmEarlyEarth
+  `calib_present/moist_rh0.8_tableRH0.8`.
 
 **M-dwarf (SAMOSA) CH4-free RH 0.8 table, launched 2026-09-15 15:27:**
 `radiation_N2_CO2_3000K_p_rh0.8.h5`, log `build_3000K_rh0.8.log`, 210 columns,
