@@ -13,7 +13,8 @@
 set -eo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 source "$HERE/ethane_table_common.sh"
-source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1
+# Deliberately NOT sourcing setvars.sh here: the manifest step only parses text
+# files, and whatever this shell exports is inherited by every job it submits.
 NICE=${NICE:-9999}
 MAXCONC=${MAXCONC:-4}
 MAXTASKS=1000          # MaxArraySize is 1001 here, so indices must stay <= 1000
