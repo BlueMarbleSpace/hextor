@@ -376,7 +376,7 @@ def build_namelist(pdry_bar, fco2, temps, star, sweepfile,
 _WORKER = {}
 
 
-def _init_worker(workroot, exe):
+def _init_worker(workroot, exe, timeout=None):
     """Give each pool process its own scratch directory and ExoColumn copy."""
     wid = os.getpid()
     wdir = os.path.join(workroot, 'w%d' % wid)
@@ -391,6 +391,10 @@ def _init_worker(workroot, exe):
         os.symlink(exe, exelink)
     _WORKER['dir'] = wdir
     _WORKER['exe'] = exelink
+    # Passed explicitly rather than read from a module global: Pool workers are
+    # started by forkserver, which re-imports this module, so anything main()
+    # assigns to a global never reaches them.
+    _WORKER['timeout'] = TIMEOUT if timeout is None else timeout
 
 
 def cache_name(pdry, fco2, fch4=None, rh=1.0, c2h6=False):
@@ -457,7 +461,7 @@ def run_column(task):
 
     try:
         res = subprocess.run([exe], cwd=wdir, capture_output=True, text=True,
-                             timeout=TIMEOUT)
+                             timeout=_WORKER['timeout'])
     except subprocess.TimeoutExpired:
         return key, None, None, 'timeout'
 
@@ -470,7 +474,12 @@ def run_column(task):
         return key, None, None, 'no sweep output'
 
     # Keep the raw records so a re-run can skip this column.
-    shutil.copyfile(spath, cachefile)
+    # Atomic: copy then rename, so a task killed mid-copy (scancel, time
+    # limit) can never leave a truncated cache file behind.  The .tmp name
+    # does not match the *.txt cache pattern.
+    tmp = cachefile + '.tmp'
+    shutil.copyfile(spath, tmp)
+    os.replace(tmp, cachefile)
 
     head, rows = parse_sweep(spath)
     olr, palb, err = assemble_column(rows, temps)
@@ -556,6 +565,25 @@ def main():
                          'extrapolated outside the table).  C2H6 is a CH4 '
                          'photolysis product, not an independent axis, so this '
                          'costs no extra grid points.  Requires a CH4 axis.')
+    ap.add_argument('--timeout', type=float, default=TIMEOUT,
+                    help='seconds allowed per ExoColumn column before it is '
+                         'recorded as failed (default %d).  Raise it when the '
+                         'node is shared: a full column is 2700 records, and '
+                         'under memory-bandwidth contention it can take '
+                         'several times longer than on a quiet node.' % TIMEOUT)
+    ap.add_argument('--list-uncached', default=None, metavar='FILE',
+                    help='write the flat index of every column not yet in the '
+                         'cache to FILE, one per line, and exit.  The index is '
+                         '(ip*nco2 + ic)*nch4 + im over the (p_dry, fCO2, fCH4) '
+                         'grid.  Used to build a Slurm array manifest.')
+    ap.add_argument('--only-columns', default=None, metavar='LIST',
+                    help='comma-separated flat column indices (see '
+                         '--list-uncached).  Compute just those columns, serially '
+                         'in this process, into the cache, and exit WITHOUT '
+                         'writing the table -- one Slurm array task.  Cached '
+                         'columns are skipped, so re-running a task is safe.  A '
+                         'normal run afterwards finds everything cached and '
+                         'assembles the HDF5.')
     ap.add_argument('--rh', type=float, default=RH,
                     help='tropospheric relative humidity of the prescribed '
                          'column (default %.2f).  Match HEXTOR\'s rhmoist when '
@@ -566,6 +594,8 @@ def main():
         return 2
 
     global PRESSURES, FCO2, TEMPERATURES, CH4_NODES, C2H6_ON
+    only = (set(int(x) for x in args.only_columns.split(',') if x.strip())
+            if args.only_columns else None)
     C2H6_ON = bool(args.c2h6_photochem)
     if args.pressures:
         PRESSURES = np.array([float(x) for x in args.pressures.split(',')])
@@ -646,6 +676,10 @@ def main():
         for ic in range(nco2):
             for im in range(nch4):
                 key = (ip, ic, im)
+                # An array task touches only its own columns: skipping the
+                # rest here avoids re-parsing ~2000 cache files per task.
+                if only is not None and (ip * nco2 + ic) * nch4 + im not in only:
+                    continue
                 fc2h6, ok = (c2h6_for(float(FCO2[ic]),
                                       float(CH4[im]) if ch4_axis else 0.0)
                              if C2H6_ON else (0.0, True))
@@ -675,12 +709,39 @@ def main():
               '(extrapolated); %d hit the C2H6/CH4 <= %.3g carbon-conservation '
               'cap' % (n_extrap, npre * nco2 * nch4, n_capped, C2H6_MAX_YIELD))
 
+    if args.list_uncached:
+        with open(args.list_uncached, 'w') as fh:
+            for t in tasks:
+                ip, ic, im = t[0]
+                fh.write('%d\n' % ((ip * nco2 + ic) * nch4 + im))
+        print('wrote %d uncached column indices to %s'
+              % (len(tasks), args.list_uncached))
+        return 0
+
+    if only is not None:
+        # One Slurm array task: run serially in this process (Slurm has already
+        # given us exactly one CPU), write the cache, and stop.  No table.
+        _init_worker(work, os.path.abspath(args.exe), args.timeout)
+        nfail = 0
+        for t in tasks:
+            t0 = time.time()
+            key, o, p, err = run_column(t)
+            ip, ic, im = key
+            print('  column %d  p=%.3g fco2=%.3g fch4=%.3g : %s  (%.0f s)'
+                  % ((ip * nco2 + ic) * nch4 + im, PRESSURES[ip], FCO2[ic],
+                     CH4[im], 'ok' if err is None else 'FAILED ' + str(err),
+                     time.time() - t0), flush=True)
+            nfail += err is not None
+        if nfail == 0:
+            shutil.rmtree(_WORKER['dir'], ignore_errors=True)
+        return 1 if nfail else 0
+
     failures = []
     if tasks:
         t0 = time.time()
         done = 0
         with Pool(args.workers, initializer=_init_worker,
-                  initargs=(work, os.path.abspath(args.exe))) as pool:
+                  initargs=(work, os.path.abspath(args.exe), args.timeout)) as pool:
             for key, o, p, err in pool.imap_unordered(run_column, tasks, chunksize=1):
                 done += 1
                 if err is not None:
