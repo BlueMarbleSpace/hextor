@@ -165,6 +165,96 @@ NWORKERS = 4
 TIMEOUT = 600          # seconds per ExoColumn run
 
 
+# ---------------------------------------------------------------------------
+# ETHANE (photochemically slaved to CH4 and CO2)
+# ---------------------------------------------------------------------------
+# C2H6 is not a free parameter: it is a photolysis product of the CH4 already
+# in the column, so carrying it as its own table axis would be both wrong and
+# expensive.  Instead it is interpolated from the photochemical model of
+# Haqq-Misra et al. (2008), Astrobiology 8, 1127, Table 1 -- C2H6 mixing ratios
+# [ppmv] at specified CO2 and CH4 levels, from the Pavlov et al. (2001) /
+# Kharecha et al. (2005) photochemistry for an anoxic Archean atmosphere.
+#
+#   rows: fCO2 = 1e-4, 1e-3, 1e-2, 1e-1        (100, 1e3, 1e4, 1e5 ppmv)
+#   cols: fCH4 = 1e-5, 1e-4, 1e-3, 1e-2        (10, 100, 1e3, 1e4 ppmv)
+#
+# Verified against the paper's own worked example: fCO2 = fCH4 = 1000 ppmv
+# gives 4.16 ppmv, quoted in the text as "4 ppmv".  Note C2H6 DECREASES with
+# CO2 at fixed CH4 (more CO2 -> more O/OH -> hydrocarbons destroyed) and rises
+# steeply with CH4 (along the fCO2 = 1e-2 row, C2H6 ~ fCH4^1.37).
+#
+# CAVEAT, and it is the weakest link in the v5 chain: Table 1 was computed at
+# 1 bar.  The early-Earth solutions this table serves sit at 4-5 bar.  The
+# mixing ratios are what the radiation consumes, but the production/loss balance
+# that sets them is pressure-dependent, and nothing here tests that.
+C2H6_FCO2 = np.array([1.0e-4, 1.0e-3, 1.0e-2, 1.0e-1])
+C2H6_FCH4 = np.array([1.0e-5, 1.0e-4, 1.0e-3, 1.0e-2])
+C2H6_PPMV = np.array([           # [i_fco2, j_fch4]
+    [1.13e-4, 0.158,  3.77,  103.0],
+    [1.15e-4, 0.0835, 4.16,   26.6],
+    [1.67e-3, 0.0359, 0.425,   9.88],
+    [5.54e-4, 0.0259, 0.559,   5.22],
+])
+
+# Largest C2H6/CH4 yield anywhere in Table 1, used to bound the extrapolation
+# (see c2h6_for).  Computed from the table rather than hardcoded so it tracks
+# any correction to the numbers above.
+C2H6_MAX_YIELD = float((C2H6_PPMV * 1.0e-6 / C2H6_FCH4[None, :]).max())
+
+# Set by --c2h6-photochem.  Off by default, so every existing build stays
+# bit-identical.
+C2H6_ON = False
+
+
+def c2h6_for(fco2, fch4):
+    """C2H6 mixing ratio of dry air, from Haqq-Misra (2008) Table 1.
+
+    Bilinear in log10(fCO2) x log10(fCH4) -> log10(C2H6), the natural space:
+    every axis spans decades and the tabulated response is close to a power law
+    in each.  Outside the grid the same bilinear form is EXTRAPOLATED rather
+    than clamped -- this table's axes run wider than Table 1 (fCO2 to 0.5, fCH4
+    to 0.1), and clamping would put a hard, unphysical shelf partway along the
+    CH4 axis.  Returns (fc2h6, in_range).
+
+    A CH4-free column gets exactly zero ethane: with no methane there is no
+    photolysis product, and log-space extrapolation toward fch4 -> 0 is
+    meaningless.
+    """
+    if fch4 <= 0.0:
+        return 0.0, True
+    x = math.log10(fco2)
+    y = math.log10(fch4)
+    xs = np.log10(C2H6_FCO2)
+    ys = np.log10(C2H6_FCH4)
+    z = np.log10(C2H6_PPMV)          # log10 ppmv
+
+    in_range = bool((xs[0] <= x <= xs[-1]) and (ys[0] <= y <= ys[-1]))
+
+    # Bracketing cell indices, clipped so the COEFFICIENTS below extrapolate
+    # linearly off the end rather than the lookup clamping to the edge value.
+    i = int(np.clip(np.searchsorted(xs, x) - 1, 0, len(xs) - 2))
+    j = int(np.clip(np.searchsorted(ys, y) - 1, 0, len(ys) - 2))
+    tx = (x - xs[i]) / (xs[i + 1] - xs[i])
+    ty = (y - ys[j]) / (ys[j + 1] - ys[j])
+
+    zi = ((1 - tx) * (1 - ty) * z[i, j]
+          + tx * (1 - ty) * z[i + 1, j]
+          + (1 - tx) * ty * z[i, j + 1]
+          + tx * ty * z[i + 1, j + 1])
+    fc2h6 = 10.0 ** zi * 1.0e-6                     # ppmv -> mixing ratio
+
+    # Carbon-conservation ceiling.  Unbounded log-log extrapolation is violent:
+    # far off the grid (low fCO2, high fCH4) the bare bilinear form reaches
+    # C2H6 mixing ratios of order unity, which is not merely wrong but would
+    # drive the N2 fill negative and corrupt the column silently.  Ethane is
+    # made FROM methane, and nowhere in Table 1 does the photochemical yield
+    # exceed C2H6/CH4 = 1.03e-2 (at fCO2 = 1e-4, fCH4 = 1e-2).  Capping at that
+    # observed maximum keeps every extrapolated cell inside the range of yields
+    # the photochemistry actually produces.
+    fc2h6 = min(fc2h6, C2H6_MAX_YIELD * fch4)
+    return float(fc2h6), in_range
+
+
 def t_strato_for(ts):
     """Stratospheric temperature cap for a surface temperature ts.
 
@@ -221,6 +311,7 @@ NML = """\
   o2_vmr   = 0.0
   ar_vmr   = 0.0
   ch4_vmr  = {ch4_vmr:.8e}
+  c2h6_vmr = {c2h6_vmr:.8e}
   o3_vmr   = 0.0
 /
 """
@@ -228,7 +319,7 @@ NML = """\
 
 def build_namelist(pdry_bar, fco2, temps, star, sweepfile,
                    mus=MU_NODES, albs=ALBEDOS, rh=RH, ptop_ratio=PTOP_RATIO,
-                   fch4=0.0):
+                   fch4=0.0, fc2h6=0.0):
     """Render the ExoColumn namelist for one (p_dry, fCO2, fCH4) column.
 
     `temps` is the surface-temperature axis swept inside the single ExoColumn
@@ -236,14 +327,14 @@ def build_namelist(pdry_bar, fco2, temps, star, sweepfile,
     &exocol_init::ts is set to the first entry so that a build without the
     sweep_ts support still produces that column rather than failing silently.
 
-    N2 fills what CO2 and CH4 leave.  ExoColumn only WARNS when the dry VMRs
-    fail to sum to one and then uses them as given, so the fill has to be right
-    here: leaving CH4 out of it would quietly add its partial pressure on top
-    of p_dry and break the table's own pressure coordinate.
+    N2 fills what CO2, CH4 and C2H6 leave.  ExoColumn only WARNS when the dry
+    VMRs fail to sum to one and then uses them as given, so the fill has to be
+    right here: leaving a gas out of it would quietly add its partial pressure
+    on top of p_dry and break the table's own pressure coordinate.
     """
     temps = np.atleast_1d(np.asarray(temps, dtype=float))
     ps_pa = pdry_bar * 1.0e5
-    n2_vmr = (1.0 - fco2 - fch4) if N2_FILL else 1.0
+    n2_vmr = (1.0 - fco2 - fch4 - fc2h6) if N2_FILL else 1.0
     nml = NML.format(
         star=star,
         h2o_eos=H2O_EOS,
@@ -262,6 +353,7 @@ def build_namelist(pdry_bar, fco2, temps, star, sweepfile,
         ps_pa=ps_pa,
         co2_vmr=fco2,
         ch4_vmr=fch4,
+        c2h6_vmr=fc2h6,
         n2_vmr=n2_vmr,
     )
     if rh < 1.0:
@@ -301,7 +393,7 @@ def _init_worker(workroot, exe):
     _WORKER['exe'] = exelink
 
 
-def cache_name(pdry, fco2, fch4=None, rh=1.0):
+def cache_name(pdry, fco2, fch4=None, rh=1.0, c2h6=False):
     """Cache file name for one column, keyed by its physical values.
 
     Formatted to a fixed number of significant digits so the same grid point
@@ -315,6 +407,11 @@ def cache_name(pdry, fco2, fch4=None, rh=1.0):
         name += '_m%.6e' % fch4
     if rh != 1.0:
         name += '_rh%.4f' % rh
+    # An ethane column is physically different from a CH4-only column at the
+    # same (p, fCO2, fCH4), so it must never collide with a cached one.  The
+    # amount itself is a function of fCO2 and fCH4, already in the name.
+    if c2h6:
+        name += '_eth'
     return name + '.txt'
 
 
@@ -348,12 +445,13 @@ def run_column(task):
     Returns (key, olr[ntmp], palb[ntmp, nzen, nsab], err); on failure the
     arrays are None and err carries the reason.
     """
-    key, pdry, fco2, fch4, temps, star, cachefile, rh = task
+    key, pdry, fco2, fch4, temps, star, cachefile, rh, fc2h6 = task
     wdir = _WORKER['dir']
     exe = _WORKER['exe']
     sweepfile = 'iofiles/sweep.txt'
 
-    nml = build_namelist(pdry, fco2, temps, star, sweepfile, fch4=fch4, rh=rh)
+    nml = build_namelist(pdry, fco2, temps, star, sweepfile, fch4=fch4, rh=rh,
+                         fc2h6=fc2h6)
     with open(os.path.join(wdir, 'exocol_config.nml'), 'w') as f:
         f.write(nml)
 
@@ -451,6 +549,13 @@ def main():
     ap.add_argument('--temps', default=None,
                     help='comma-separated surface temperatures [K], '
                          'overriding the grid')
+    ap.add_argument('--c2h6-photochem', action='store_true',
+                    help='add ethane to every column, slaved to that column\'s '
+                         'CO2 and CH4 through the Haqq-Misra et al. (2008) '
+                         'Table 1 photochemistry (bilinear in log-log, '
+                         'extrapolated outside the table).  C2H6 is a CH4 '
+                         'photolysis product, not an independent axis, so this '
+                         'costs no extra grid points.  Requires a CH4 axis.')
     ap.add_argument('--rh', type=float, default=RH,
                     help='tropospheric relative humidity of the prescribed '
                          'column (default %.2f).  Match HEXTOR\'s rhmoist when '
@@ -460,7 +565,8 @@ def main():
         print('--rh must be in (0, 1]')
         return 2
 
-    global PRESSURES, FCO2, TEMPERATURES, CH4_NODES
+    global PRESSURES, FCO2, TEMPERATURES, CH4_NODES, C2H6_ON
+    C2H6_ON = bool(args.c2h6_photochem)
     if args.pressures:
         PRESSURES = np.array([float(x) for x in args.pressures.split(',')])
     if args.fco2:
@@ -474,6 +580,10 @@ def main():
     # the axis collapses to a single implicit level that is never written, so
     # the output keeps the previous v2 layout byte for byte.
     ch4_axis = bool(args.ch4_axis or args.ch4)
+    if C2H6_ON and not ch4_axis:
+        print('--c2h6-photochem needs a CH4 axis: ethane is a CH4 photolysis '
+              'product, so a CH4-free table would carry exactly zero of it.')
+        return 2
     if ch4_axis:
         if np.any(CH4_NODES <= 0.0):
             print('CH4 axis levels must be positive: the axis is interpolated '
@@ -530,13 +640,23 @@ def main():
     # Collect the work, reusing any cached columns.
     tasks = []
     ncached = 0
+    n_extrap = 0
+    n_capped = 0
     for ip in range(npre):
         for ic in range(nco2):
             for im in range(nch4):
                 key = (ip, ic, im)
+                fc2h6, ok = (c2h6_for(float(FCO2[ic]),
+                                      float(CH4[im]) if ch4_axis else 0.0)
+                             if C2H6_ON else (0.0, True))
+                if not ok:
+                    n_extrap += 1
+                if C2H6_ON and ch4_axis and float(CH4[im]) > 0.0 and \
+                        fc2h6 >= C2H6_MAX_YIELD * float(CH4[im]) * (1.0 - 1e-9):
+                    n_capped += 1
                 cachefile = os.path.join(cache, cache_name(
                     PRESSURES[ip], FCO2[ic], CH4[im] if ch4_axis else None,
-                    rh=args.rh))
+                    rh=args.rh, c2h6=C2H6_ON))
                 if os.path.exists(cachefile):
                     head, rows = parse_sweep(cachefile)
                     o, p, err = assemble_column(rows, TEMPERATURES)
@@ -547,9 +667,13 @@ def main():
                         continue
                 tasks.append((key, float(PRESSURES[ip]), float(FCO2[ic]),
                               float(CH4[im]), TEMPERATURES, args.star,
-                              cachefile, args.rh))
+                              cachefile, args.rh, fc2h6))
 
     print('       %d columns cached, %d to run' % (ncached, len(tasks)))
+    if C2H6_ON:
+        print('       C2H6: %d of %d columns are OUTSIDE Haqq-Misra Table 1 '
+              '(extrapolated); %d hit the C2H6/CH4 <= %.3g carbon-conservation '
+              'cap' % (n_extrap, npre * nco2 * nch4, n_capped, C2H6_MAX_YIELD))
 
     failures = []
     if tasks:
@@ -628,6 +752,32 @@ def main():
             f.attrs['water'] = ('variable_ps: total ps = p_dry + esat(Ts); '
                                 'prescribed moist adiabat, RH = %.2f' % args.rh)
         f.attrs['rh'] = args.rh
+        if C2H6_ON:
+            f.attrs['c2h6'] = (
+                'ethane present, slaved to each column\'s CO2 and CH4 via '
+                'Haqq-Misra et al. (2008) Astrobiology 8, 1127, Table 1 '
+                '(Pavlov/Kharecha photochemistry, anoxic Archean); bilinear in '
+                'log10(fCO2) x log10(fCH4) -> log10(C2H6), extrapolated outside '
+                'the table. NOT an independent axis: C2H6 is a CH4 photolysis '
+                'product.')
+            f.attrs['c2h6_extrapolated_columns'] = n_extrap
+            f.attrs['c2h6_capped_columns'] = n_capped
+            f.attrs['c2h6_max_yield'] = C2H6_MAX_YIELD
+            f.attrs['c2h6_table_range'] = (
+                'Table 1 covers fCO2 1e-4..1e-1 and fCH4 1e-5..1e-2; %d of %d '
+                'columns lie outside it and use the extrapolated form.'
+                % (n_extrap, npre * nco2 * nch4))
+            f.attrs['c2h6_caveat'] = (
+                'Table 1 was computed at 1 bar. Columns far from 1 bar carry an '
+                'untested extrapolation of the photochemistry, not of the '
+                'radiation.')
+            f.attrs['c2h6_cap'] = (
+                'Extrapolated cells are bounded by C2H6/CH4 <= %.4g, the largest '
+                'yield anywhere in Table 1. Without it the bare log-log form '
+                'reaches C2H6 of order unity far off the grid, which would drive '
+                'the N2 fill negative.' % C2H6_MAX_YIELD)
+        else:
+            f.attrs['c2h6'] = 'none'
         f.attrs['exocolumn_exe'] = os.path.basename(args.exe)
         f.attrs['t_strato'] = 'min(%.1f K, Ts)' % T_STRATO_REF
         f.attrs['p_top_ratio'] = PTOP_RATIO
