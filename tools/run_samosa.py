@@ -65,6 +65,18 @@ CASES = [
     (21, 900,  0.43), (22, 2600, 4.83), (23, 2000, 0.10), (24, 500,  1.13),
     (25, 1300, 0.16), (26, 500,  2.34), (27, 1000, 0.89), (28, 1700, 3.79),
     (29, 1400, 0.55), (30, 800,  7.85), (31, 500,  0.21), (32, 1200, 1.13),
+    # Sequence 3 is off the ExoPlaSim grid, so these are the table's rounded
+    # values.  The protocol's own generator (seed 1043337) reproduces every row
+    # except 39, which it puts at 2276 W/m2; the published 2279 is kept, since
+    # that is what defines the case for every other group.
+    (33, 1279, 3.92), (34, 2455, 1.00), (35, 1628, 1.07), (36, 466,  0.27),
+    (37, 838,  2.72), (38, 2013, 0.11), (39, 2279, 9.97), (40, 1114, 0.39),
+    (41, 981,  1.78), (42, 2143, 0.22), (43, 1871, 4.83), (44, 696,  0.60),
+    (45, 599,  6.00), (46, 1762, 0.48), (47, 2596, 2.20), (48, 1421, 0.18),
+    (49, 1490, 1.81), (50, 2528, 0.15), (51, 1692, 6.58), (52, 668,  0.53),
+    (53, 764,  5.29), (54, 1803, 0.66), (55, 2074, 1.46), (56, 1050, 0.18),
+    (57, 1182, 8.18), (58, 2208, 0.32), (59, 1944, 2.98), (60, 907,  0.12),
+    (61, 535,  1.17), (62, 1560, 0.30), (63, 2385, 3.21), (64, 1348, 0.82),
 ]
 
 SEQUENCES = {
@@ -675,8 +687,7 @@ def main():
     known = {c[0]: c for c in CASES}
     missing = [s for s in samples if s not in known]
     if missing:
-        print('cases not tabulated in this script (Sequence 3 is not '
-              'transcribed): %s' % missing)
+        print('cases not tabulated in this script: %s' % missing)
         samples = [s for s in samples if s in known]
 
     inits = ['warm', 'cold'] if args.init == 'both' else [args.init]
