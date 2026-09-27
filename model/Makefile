@@ -1,37 +1,36 @@
 #
-# Makefile for EBM
+# Makefile for the HEXTOR driver
 #
+# FC must be an HDF5-aware Fortran wrapper (h5fc/h5pfc) around the compiler
+# the flags are written for.  On merlin that is /opt/hdf5/bin/h5fc, an HDF5
+# built against Intel ifx; source /opt/intel/oneapi/setvars.sh before building
+# or running, or the driver dies at start-up looking for libimf.so.  On another
+# machine override it on the command line (`make FC=h5pfc`) rather than editing
+# this file.  Paths are relative to this directory, so nothing else is
+# machine-specific.
+FC = /opt/hdf5/bin/h5fc
 
-### Edit FC and WDIR to match your system ###
-FC 	= h5fc
-#FC 	= /usr/bin/h5pfc
-#FC 	= /opt/intel/bin/ifort
-WDIR	= /models/hextor/model
-#############################################
-
-#Flags for ifort
-FLAGS	= -r8 -align all -warn nogeneral -O3 -g -parallel
-FLAGSFFH = -cpp -O3 -g
-
+# Flags for Intel ifx.  The published binaries were built with -parallel in
+# this list, which ifx does not support and ignored with a warning (#10148),
+# so it is dropped here; auto-parallelisation was never in effect.
+FLAGS = -r8 -align all -warn nogeneral -O3 -g
 # Flags for gfortran
-#FLAGS    = -fdefault-real-8 -Wall -frecursive -O3 -g
-#FLAGSFFH = -cpp -Wall -frecursive -O3 -g
+#FLAGS = -fdefault-real-8 -Wall -frecursive -O3 -g
 
-TARGET	= driver
-OBJECTS = m_ffhash.o radiation.o driver.o
+TARGET  = driver
+OBJECTS = radiation.o driver.o
 
 $(TARGET) : $(OBJECTS)
 	$(FC) $(FLAGS) -o $(TARGET) $(OBJECTS)
 
-m_ffhash.o : $(WDIR)/radiation/m_ffhash.f90
-	$(FC) $(FLAGSFFH) -c $(WDIR)/radiation/m_ffhash.f90
-radiation.o : $(WDIR)/radiation/radiation.f90
-	$(FC) $(FLAGS) -c $(WDIR)/radiation/radiation.f90
-driver.o : $(WDIR)/driver.f
-	$(FC) $(FLAGS) -c $(WDIR)/driver.f
+radiation.o : radiation/radiation.f90
+	$(FC) $(FLAGS) -c radiation/radiation.f90
+# driver.f USEs the radiation module, so its .mod file must exist first.
+driver.o : driver.f radiation.o
+	$(FC) $(FLAGS) -c driver.f
 
 clean:
-	rm -rf $(OBJECTS) $(TARGET)
+	rm -f $(OBJECTS) $(TARGET) radiation_mod.mod
 new:
 	$(MAKE) clean
 	$(MAKE)

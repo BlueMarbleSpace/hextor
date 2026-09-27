@@ -25,3 +25,6 @@ model/radiation/build_*.log
 
 # Scratch runs from tools/calibrate_earth.py (resume cache).
 calibrate_earth_runs/
+
+# Scratch runs of the golden-output regression test.
+tests/regression/runs/

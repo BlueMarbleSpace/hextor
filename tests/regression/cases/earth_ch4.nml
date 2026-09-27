@@ -1,0 +1,87 @@
+! Pre-industrial Earth on the CH4-resolved Sun table, cloud-calibrated.
+!
+! Calibrated 2026-09-14 with tools/calibrate_earth.py against
+! radiation_N2_CO2_CH4_Sun_p.h5 at pre-industrial composition (280 ppm CO2,
+! 730 ppb CH4): fcloud = 0.4427 with the zenith-dependent cloud albedo, and
+! cloudir = 10.28 W/m2, give 287.85 K and a global albedo of 0.300.  d0 = 0.58
+! is unchanged from the v1 calibration.
+!
+! Why clouds: input.nml.earth reaches ~286 K on the legacy v1 table with no
+! clouds only because that table clamps the 0.06 ocean to a 0.2 surface albedo
+! and has no OLR saturation.  On the ExoColumn tables the same cloud-free
+! setup equilibrates at 367 K.  Use this namelist, not input.nml.earth, with
+! any pressure-resolved Sun table.
+!
+! Known properties of this calibration:
+!   * snowball below S/S0 ~0.95 and runaway above ~1.05; warm branch for
+!     cloudir ~0-22 W/m2 at this fcloud;
+!   * sensitivity ~1.65 K per W/m2 near the calibration (~6 K per CO2
+!     doubling), about twice Earth's -- a clear-sky RH = 1 column;
+!   * cloudir comes out ~10 W/m2 against a real longwave cloud effect of
+!     ~+25-30 W/m2, consistent with the saturated column over-stating the
+!     clear-sky greenhouse.
+!
+! fch4 needs a radfile with a CH4 axis (driver.f halts otherwise).  The table
+! is clear-sky with no organic haze, so it is biased warm where CH4/CO2 > ~0.1.
+! fluxcnvg = 1e-4 because the default 0.1 halts runs still drifting.
+ &ebm
+   seasons	= .true.,
+   do_manualseasons = .false.,
+   tempinit     = 288.0,
+   resfile      = 0,
+   tend		= 7.e11, 
+   dt		= 4.32e4,
+   rot		= 7.27e-5,
+   a		= 1.49597892E13,
+   ecc		= 0.0,
+   peri		= 0.0,
+   obl		= 23.5,
+   d0           = 0.58,
+   diffadj      = .false.,
+   pg0          = 1.0,
+   fco2         = 2.8e-4,
+   fh2          = 0.0,
+   fch4          = 7.3e-7,
+   ocean	= 0.7,
+   igeog        = 1,
+   constheatcap = .false.,
+   heatcap      = 2.00e6
+   yrstep       = 1,
+   msun         = 1.9891e33,
+   iterhalt     = .true.,
+   fluxcnvg      = 1.0e-4,
+   do_longitudinal = .false. /
+
+ &radiation
+   relsolcon	 = 1.0,
+   solarcon      = 1360,
+   radparam      = 3,
+   radfile       = "./radiation/radiation_N2_CO2_CH4_Sun_p.h5",
+   groundalb	 = 0.30,
+   snowalb       = 0.663,
+   oceanalbconst = .false.,
+   ocnalb        = 0.06,
+   landsnowfrac  = 1.00, 
+   cloudir       = 10.28,
+   fcloud        = 0.4427,
+   cloudalb      = .true.,
+   soladj        = .false.,
+   linalb        = .false.,
+   linrad        = .false. /
+
+ &co2cycle
+   do_cs_cycle  = .false.,
+   outgassing   = 7.0,
+   weathering   = 7.0,
+   betaexp      = 0.50,
+   kact         = 0.09,
+   krun         = 0.045 /
+
+ &h2cycle
+   do_h2_cycle  = .false.,
+   h2outgas     = 1.0e12 /
+
+ &stochastic
+   do_stochastic = .false.,
+   noisevar      = 0.334 /
+

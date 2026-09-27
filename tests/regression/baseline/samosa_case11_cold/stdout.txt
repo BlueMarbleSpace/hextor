@@ -1,0 +1,25 @@
+ radiation_init: ./radiation/radiation_N2_CO2_3000K_p_rh0.8.h5
+   grid: npre=15 nco2=14 nch4=1 ntmp=31 nzen=12 nsab=9
+   p_dry  [bar]:  5.000E-02 ..  2.000E+01
+   fco2        :  1.000E-06 ..  5.012E-01
+   fch4        : none (table has no CH4 axis)
+   T      [K]  :   180.0 ..   620.0
+   surfalb     :   0.00 ..   1.00
+ step =            2
+ step =            3
+ step =            4
+ step =            5
+ step =            6
+ step =            7
+ step =            8
+ step =            9
+ step =           10
+ step =           11
+ step =           12
+ step =           13
+ step =           14
+ step =           15
+ Flux converged at year    15.0000000000000       (dOLR =
+  4.119873046875000E-004 W/m2)
+ The energy-balance calculation is complete.
+ SH/NH temperature difference =   -53.0261260850563     
