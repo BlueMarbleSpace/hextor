@@ -60,4 +60,4 @@
  Flux converged at year    52.0000000000000       (dOLR =
   3.997802734375000E-003 W/m2)
  The energy-balance calculation is complete.
- SH/NH temperature difference =   -60.6791995319559     
+ SH/NH temperature difference =   -60.6791995319550     

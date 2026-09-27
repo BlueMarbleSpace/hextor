@@ -144,6 +144,9 @@ c----------------------------------------------------------------------c
       real edgeNpole, edgeNeq, edgeSpole, edgeSeq
       integer nedgeN, nedgeS
       logical converged
+      logical diffcons, icecont
+      integer nstepyr
+      dimension xe(0:nbelts), gedge(0:nbelts), wx(nbelts)
       dimension solcon(niter),prec(niter),ecce(niter),
      &  yrlabel(niter),obliq(niter)
       dimension solconD(ndays),precD(ndays),ecceD(ndays),
@@ -160,7 +163,7 @@ c----------------------------------------------------------------------c
      &               do_longitudinal, do_manualseasons,
      &               cl, cw, ci, do_dailyoutput, fillet,
      &               haltonCO2cond, fluxcnvg, moistdiff, rhmoist,
-     &               icelinetemp
+     &               icelinetemp, nstepyr, diffcons, icecont
 
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
@@ -250,6 +253,15 @@ c  the year-0 row of tempseries.out depend on the variable layout.
       diffadj_rot = .true. ! set .false. to drop the (rot0/rot)^2 term from diffadj
       moistdiff = .false. ! set .true. to diffuse moist static energy, not T
       rhmoist = 0.8       ! relative humidity of the diffused moisture (moistdiff)
+c  Numerics switches added in 4.3.0.  Each defaults to the published
+c  behaviour, which the regression test in tests/regression/ holds it to.
+      nstepyr = 0         ! > 0: dt = orbit/nstepyr and the year is counted
+                          ! in steps (an even count samples both
+                          ! hemispheres alike); 0 = published dt and clock
+      diffcons = .false.  ! .true.: flux-conservative diffusion operator on
+                          ! the true belt edges (see label 310)
+      icecont = .false.   ! .true.: sea-ice fraction reaches 1 continuously
+                          ! at icetemp instead of jumping from 0.63
       cloudalb = .true. ! set .false. to disable cloud albedo
       iterhalt = .false.  ! set .true. to enable halt based on iterations
       fluxcnvg = 0.1      ! OLR convergence threshold (W/m²) for iterhalt mode
@@ -592,12 +604,37 @@ c  CALCULATE BELT AREAS - NORMALIZED TO PLANET SURFACE AREA
      &     sin(lat(k) - pi/(2*nbelts)))/2.
  180  continue
 
+c  True belt edges in x = sin(lat) for the flux-conservative operator
+c  (diffcons): the same edges the areas above are built on.  gedge is the
+c  (1 - x^2) factor at each edge, zero at the poles so no heat crosses
+c  them, and wx the belt width in x, which is 2 area(k).
+      xe(0) = -1.
+      do k = 1, nbelts, 1
+        xe(k) = sin(lat(k) + pi/(2*nbelts))
+        wx(k) = xe(k) - xe(k-1)
+        gedge(k) = 1. - xe(k)**2
+      end do
+      gedge(0) = 0.
+      gedge(nbelts) = 0.
+
 c----------------------------------------------------------------------c
 c  BEGIN INTEGRATION AT VERNAL EQUINOX. FIRST CALCULATE TIME SINCE
 c  PERIHELION.
 
       d = d0  !**initialize diffusion coefficient
       w = (grav*msun)**(0.5)*a**(-1.5)  !2*pi/(orbital period)
+
+c  With nstepyr set, the time step is the orbit divided into that many equal
+c  steps and the year boundary (seasonal averaging below) is counted in
+c  steps rather than compared in time.  The published dt = 43200 s gives
+c  730.4 steps per orbit, so every model year ran 731 steps, overshot the
+c  equinox by 0.3 d, and sampled the two hemispheres' seasons at different
+c  phases and counts -- a source of north-south asymmetry under symmetric
+c  forcing.  An even nstepyr samples both hemispheres alike.
+      if ( nstepyr .gt. 0 ) then
+        dt = (2*pi/w)/nstepyr
+        print *, "nstepyr = ", nstepyr, " -> dt = ", dt, " s"
+      end if
 
 
 c **write to 'co2clouds.out', at most, 1000 times.
@@ -711,6 +748,7 @@ c  what the moisture term adds to the dry temperature gradient.
         ntrans = ntrans + 1
         do k = 1, nbelts-1, 1
           xedge = 0.5*(x(k) + x(k+1))
+          if ( diffcons ) xedge = xe(k)
           ftrans(k) = ftrans(k) - diff(k)*(1 - xedge**2)*tprime(k)
           flatent(k) = flatent(k) - diff(k)*(1 - xedge**2)*
      &      (tprime(k) - (temp(k+1) - temp(k))/dx(k))
@@ -718,6 +756,18 @@ c  what the moisture term adds to the dry temperature gradient.
       end if
 
       do 310 k=1,nbelts,1   !**start belt loop 
+        if ( diffcons ) then
+c  Flux form: (1 - x^2) dT/dx at the true belt edges -- tprime(k) is the
+c  centre-to-centre gradient across edge k -- divided by the belt width in
+c  x.  The belt-area sum of t2prime then vanishes to round-off.  The stencil
+c  below evaluates its faces at the midpoints between belt centres, divides
+c  by a width that is not the belt's, and at the poles is fed a spacing
+c  ratio of 8 by the 0.0038-wide ghost cell: on a smooth profile it adds
+c  ~0.8 W/m2 of spurious global heating and overstates the polar
+c  convergence by ~70% (FILLET code comparison, Sept 2026).
+          t2prime(k) = (gedge(k)*tprime(k) - gedge(k-1)*tprime(k-1))
+     &                 / wx(k)
+        else
                             !**first derivatives at grid points
          tprimeave(k) = (tprime(k)*dx(k) + tprime(k-1)*
      &      dx(k-1))/(dx(k) + dx(k-1))
@@ -726,6 +776,7 @@ c  what the moisture term adds to the dry temperature gradient.
      &      tprimeave(k) + ((dx(k-1)/2)**2)*(1-(x(k)+(dx(k)/2))**2)*
      &      tprime(k) - (((dx(k)/2)**2)*(1-(x(k)-(dx(k-1)/2))**2))*
      &      tprime(k-1))/((dx(k)/2)*(dx(k-1)/2)*(dx(k)/2 + dx(k-1)/2)) 
+        end if
 
 c----------------------------------------------------------------------c
 c  OUTGOING INFRARED (Obtained from fits to Jim Kasting's radiative
@@ -937,6 +988,12 @@ c  HEAT CAPACITY and SURFACE ALBEDO
          fice(k) = 1
       else
          fice(k) = 1. - exp((temp(k)-273.15)/10.)
+c  The ramp reaches only 0.63 at icetemp and then jumps to 1, a step of
+c  0.11 in surface albedo and 12x in heat capacity at the temperature that
+c  also defines the ice line.  icecont normalises it to reach 1 exactly at
+c  icetemp, keeping the shape and the 273.15 K onset.
+         if ( icecont ) fice(k) = fice(k)/
+     &      (1. - exp((icetemp-273.15)/10.))
       end if
 
       if ( cloudalb ) then
@@ -1631,7 +1688,11 @@ c  GLOBAL AVERAGING
       nstep = nstep + 1
 
 c  SEASONAL AVERAGING
-      if(t.lt.2*pi/w) goto 800    !**one orbit since last averaging
+      if ( nstepyr .gt. 0 ) then
+        if ( nstep .lt. nstepyr ) goto 800   !**one orbit, counted in steps
+      else
+        if(t.lt.2*pi/w) goto 800    !**one orbit since last averaging
+      end if
       ann_tempave = tempavesum/nstep
       ann_albave = albavesum/nstep
       ann_fluxave = fluxavesum/nstep
