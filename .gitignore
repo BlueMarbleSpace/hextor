@@ -28,3 +28,6 @@ calibrate_earth_runs/
 
 # Scratch runs of the golden-output regression test.
 tests/regression/runs/
+
+# Scratch runs of tools/run_fillet.py (results, lat files and logs beside it are kept).
+fillet/runs/
