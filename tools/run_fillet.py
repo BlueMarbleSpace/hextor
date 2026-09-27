@@ -150,6 +150,7 @@ def namelist(exp, case, args):
              '   iterhalt     = .true.,',
              '   fluxcnvg     = %.3e,' % args.fluxcnvg,
              '   icelinetemp  = %.2f,' % args.icelinetemp,
+             '   cnvgcycle    = %d,' % args.cnvgcycle,
              '   do_longitudinal = .false.,']
     if not ben1:
         lines += ['   cl           = 1.e7,',
@@ -259,7 +260,7 @@ def run_case(exp, case, args, modeldir):
             res['global'] = rows[0].split()[1:]
             res['lat'] = lat
             orbits, flag, dolr, dtg, asym = conv[0].split()
-            res['conv'] = dict(orbits=int(orbits), converged=flag == '1',
+            res['conv'] = dict(orbits=int(orbits), converged=flag != '0', cycle=int(flag),
                                dolr=float(dolr), dtglob=float(dtg), asym=float(asym))
     if res['rc'] == 0:
         with open(result_file, 'w') as f:
@@ -308,7 +309,8 @@ def config_lines(exp, args, version):
         '# Surface: %s; sea-ice fraction 1 - exp((T - 273.15 K)/10 K) between 273.15 and 263.15 K and 1 below; land snow below 273.15 K.' % surf,
         '# Orbit: %s.' % orbit,
         '# Initial state: uniform %.0f K (warm start) or %.0f K (cold start) as noted per experiment; every case starts from that state (no continuation).' % (args.twarm, args.tcold),
-        '# Convergence: halt when the year-to-year change in global-mean OLR falls below %.0e W m^-2 (cap 5000 orbits); one further orbit provides the annual means. Per-case records in logs/.' % args.fluxcnvg,
+        '# Convergence: halt when the year-to-year change in global-mean OLR falls below %.0e W m^-2%s (cap 5000 orbits); one further orbit provides the annual means. Per-case records in logs/.' % (
+            args.fluxcnvg, ', or when it repeats to that tolerance over a cycle of up to %d years (a periodic seasonal oscillation; the case then reports one phase of the cycle)' % args.cnvgcycle if args.cnvgcycle >= 2 else ''),
         '# Numerics switches: %s.' % numerics,
     ]
 
@@ -350,6 +352,15 @@ def global_header(exp, args, version, start):
     return '\n'.join(lines) + '\n'
 
 
+def convergence_text(cv):
+    if not cv['converged']:
+        return 'ITERATION CAP REACHED'
+    if cv.get('cycle', 1) > 1:
+        return ('year-to-year OLR test not met, OLR repeats over a %d-year cycle (the means are one '
+                'phase of it; the year-to-year change is its amplitude)' % cv['cycle'])
+    return 'year-to-year OLR test met'
+
+
 def lat_file(exp, res, args, version):
     c, cv = res['case'], res['conv']
     lines = ['# FILLET %s with HEXTOR %s' % (LONG_NAME[exp], version)]
@@ -364,8 +375,7 @@ def lat_file(exp, res, args, version):
         '# Initial state: uniform %.0f K' % c['tinit'],
         '# Convergence: %d orbits, %s; final year-to-year |dOLR| = %.3e W m^-2, |dTglob| = %.3e K;'
         ' north-south asymmetry of the annual-mean belt temperatures = %.4f K' % (
-            cv['orbits'], 'flux test met' if cv['converged'] else 'ITERATION CAP REACHED',
-            cv['dolr'], cv['dtglob'], cv['asym']),
+            cv['orbits'], convergence_text(cv), cv['dolr'], cv['dtglob'], cv['asym']),
         '#',
         '# Columns of data (annually averaged for last orbit)',
         '# Lat = latitude of belt centre (degrees)',
@@ -398,16 +408,19 @@ def assemble(exp, results, args, version):
             with open(os.path.join(archive, 'case_0', 'lat_output.dat'), 'w') as f:
                 f.write(text)
     with open(os.path.join(logdir, '%s_convergence.log' % exp), 'w') as f:
-        f.write('# case inst obl xco2 tglob orbits converged dOLR dTglob asymNS seconds\n')
+        f.write('# case inst obl xco2 tglob orbits flag dOLR dTglob asymNS seconds'
+                '   [flag: 1 year-to-year test, p = 2..4 p-year cycle, 0 cap]\n')
         for r in results:
             c, cv = r['case'], r['conv']
             f.write('%d %.4f %.1f %.4f %s %d %d %.3e %.3e %.4f %.1f\n' % (
                 c['case'], c['inst'], c['obl'], c['xco2'], r['global'][3], cv['orbits'],
-                int(cv['converged']), cv['dolr'], cv['dtglob'], cv['asym'], r['seconds']))
+                cv.get('cycle', int(cv['converged'])), cv['dolr'], cv['dtglob'], cv['asym'], r['seconds']))
     n_cap = sum(1 for r in results if not r['conv']['converged'])
+    n_cyc = sum(1 for r in results if r['conv'].get('cycle', 1) > 1)
     n_asym = sum(1 for r in results if r['conv']['asym'] > args.asym_warn)
-    print('%-10s %3d cases -> %s   (%d hit the iteration cap, %d with N-S asymmetry > %.2f K)'
-          % (exp, len(results), os.path.relpath(archive, ROOT), n_cap, n_asym, args.asym_warn))
+    print('%-10s %3d cases -> %s   (%d hit the iteration cap, %d on a multi-year cycle, '
+          '%d with N-S asymmetry > %.2f K)'
+          % (exp, len(results), os.path.relpath(archive, ROOT), n_cap, n_cyc, n_asym, args.asym_warn))
 
 
 def main():
@@ -438,6 +451,9 @@ def main():
                     help='halt when the year-to-year change in global OLR is below this (W/m2)')
     ap.add_argument('--icelinetemp', type=float, default=263.15,
                     help='threshold of the reported ice line (K)')
+    ap.add_argument('--cnvgcycle', type=int, default=4,
+                    help='also halt when global OLR repeats over a cycle of up to this many years '
+                         '(0 = year-to-year test only)')
     ap.add_argument('--twarm', type=float, default=288.0)
     ap.add_argument('--tcold', type=float, default=233.0)
     ap.add_argument('--extra-ebm', action='append', default=[],

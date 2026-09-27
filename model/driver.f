@@ -145,7 +145,8 @@ c----------------------------------------------------------------------c
       integer nedgeN, nedgeS
       logical converged
       logical diffcons, icecont
-      integer nstepyr
+      integer nstepyr, cnvgflag, cnvgcycle
+      real irhist(4)
       dimension xe(0:nbelts), gedge(0:nbelts), wx(nbelts)
       dimension solcon(niter),prec(niter),ecce(niter),
      &  yrlabel(niter),obliq(niter)
@@ -163,7 +164,7 @@ c----------------------------------------------------------------------c
      &               do_longitudinal, do_manualseasons,
      &               cl, cw, ci, do_dailyoutput, fillet,
      &               haltonCO2cond, fluxcnvg, moistdiff, rhmoist,
-     &               icelinetemp, nstepyr, diffcons, icecont
+     &               icelinetemp, nstepyr, diffcons, icecont, cnvgcycle
 
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
@@ -262,6 +263,13 @@ c  behaviour, which the regression test in tests/regression/ holds it to.
                           ! the true belt edges (see label 310)
       icecont = .false.   ! .true.: sea-ice fraction reaches 1 continuously
                           ! at icetemp instead of jumping from 0.63
+      cnvgcycle = 0       ! 2..4: the iterhalt flux test also accepts a
+                          ! cycle of that many years or fewer
+                          ! (|OLR(y) - OLR(y-p)| < fluxcnvg), so a periodic
+                          ! seasonal oscillation halts instead of running to
+                          ! niter; 0 = published (year-to-year test only)
+      irhist(:) = 0.
+      cnvgflag = 0
       cloudalb = .true. ! set .false. to disable cloud albedo
       iterhalt = .false.  ! set .true. to enable halt based on iterations
       fluxcnvg = 0.1      ! OLR convergence threshold (W/m²) for iterhalt mode
@@ -345,7 +353,8 @@ c  OPEN FILES
       open (unit=53,file='out/convergence.out',status='unknown')
       write(53,1141)
  1141 format('# orbits flag dOLR(W/m2) dTglob(K) asymNS(K)',
-     &  ' [orbits to the halt; flag 1 = convergence test met,',
+     &  ' [orbits to the halt; flag 1 = year-to-year test met,',
+     &  ' p = 2..4: repeats over a p-year cycle (cnvgcycle),',
      &  ' 0 = iteration cap; final year-to-year changes;',
      &  ' max |T(k)-T(-k)| of the annual means]')
       open (unit=98,file='data/Altair_inc90_a3.3.txt',status='old')
@@ -2052,7 +2061,7 @@ c               warm sliver at south pole, rest glaciated -> ice-ball
       write(19,766) relsolcon, icelineS, icelineN
  766  format(f5.3,2x,f8.3,2x,f8.3)
 
-      write(53,769) nint(yricnt), merge(1, 0, converged), dolrfin,
+      write(53,769) nint(yricnt), cnvgflag, dolrfin,
      &              dtglobfin, asymns
  769  format(i6,1x,i1,1x,es11.3,1x,es11.3,1x,f9.4)
 
@@ -2126,8 +2135,31 @@ c9997  format(20(2x,f8.3))
           write(*,*) 'Flux converged at year ', yricnt,
      &      ' (dOLR =', dolrfin, 'W/m2)'
           converged = .true.
+          cnvgflag = 1
           goto 1000
         end if
+c  A periodic seasonal oscillation (2-, 3- and 4-year cycles occur at high
+c  obliquity and in glaciated states, from the ice thresholds switching)
+c  never passes the year-to-year test and used to run to niter.  With
+c  cnvgcycle the run also halts when OLR repeats over p <= cnvgcycle years;
+c  the final orbit's means are then one phase of that cycle, whose
+c  amplitude is the dOLR recorded in out/convergence.out.
+        if ( cnvgcycle .ge. 2 ) then
+          do p = 2, min(cnvgcycle, 4), 1
+            if ( yricnt .gt. p .and.
+     &           abs(ann_irave - irhist(p)) .lt. fluxcnvg ) then
+              write(*,*) 'Flux converged on a ', p, '-year cycle at',
+     &          ' year ', yricnt, ' (dOLR =', dolrfin, 'W/m2)'
+              converged = .true.
+              cnvgflag = p
+              goto 1000
+            end if
+          end do
+        end if
+        do p = 4, 2, -1
+          irhist(p) = irhist(p-1)
+        end do
+        irhist(1) = ann_irave
         prev_irave = ann_irave
         yricnt = yricnt + 1
         yrcnt  = yricnt
@@ -2140,6 +2172,7 @@ c9997  format(20(2x,f8.3))
         prev_irave = ann_irave
         if(dtglobfin.lt.cnvg) then
           converged = .true.
+          cnvgflag = 1
           goto 1000
         end if
 
