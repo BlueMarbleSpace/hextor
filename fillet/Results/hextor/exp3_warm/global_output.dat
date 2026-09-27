@@ -1,0 +1,93 @@
+# FILLET Experiment 3 (warm-start branch) with HEXTOR 4.2.1-42-g75f5fb1
+# Model: HEXTOR 4.2.1-42-g75f5fb1 (FILLET re-file, September 2026); 18 latitude belts of 10 deg, seasonal cycle, explicit 730 steps per orbit (dt = 43226.5 s, set by nstepyr).
+# Radiation: 1 bar lookup table ./radiation/radiation_N2_CO2_Sun.h5 (clear sky; CO2 axis 100 ppm - 0.91, T 190-370 K with power-law extrapolation outside; CO2 below 100 ppm is clamped to the axis floor); no cloud albedo (fcloud = 0); cloudir = 0.00 W m^-2 (untuned).
+# Transport: D = 0.50 W m^-2 K^-1 constant (diffadj off); the Diff column is the value used.
+# Surface: surface albedo ocean 0.20 / land 0.30 / snow-ice 0.60; heat capacities land 1e7, water 4e8, ice 1e7 J m^-2 K^-1; ocean fraction 0.75 in every belt; sea-ice fraction 1 - exp((T - 273.15 K)/10 K) between 273.15 and 263.15 K and 1 below; land snow below 273.15 K.
+# Orbit: a = 1 au, e = 0, year 365.22 d.
+# Initial state: uniform 288 K (warm start) or 233 K (cold start) as noted per experiment; every case starts from that state (no continuation).
+# Convergence: halt when the year-to-year change in global-mean OLR falls below 1e-03 W m^-2, or when it repeats to that tolerance over a cycle of up to 4 years (a periodic seasonal oscillation; the case then reports one phase of the cycle) (cap 5000 orbits); one further orbit provides the annual means. Per-case records in logs/.
+# Numerics switches: diffcons = .true..
+#
+# Name of benchmark/experiment: Experiment 3 (warm-start branch)
+# Initial state for this experiment: uniform 288 K (warm start)
+# Describe how ice line latitude is determined: latitude where the annual-mean belt temperature crosses 263.15 K, linearly interpolated between belt centres. Ice-free: NMin = 90, SMax = -90; snowball: NMin = 0, SMax = 0. A cap coexisting with a belt in one hemisphere is reported as the cap (noted in logs/).
+#
+# Columns of data
+# Case = case number (0 -> total number of cases in experiment)
+# Inst = instellation (S_earth; i.e., relative to Earth's 1361 W m^-2)
+# Obl = obliquity (degrees)
+# XCO2 = mixing ratio (volume) of CO2 (ppm)
+# Tglob = global, annual mean surface temperature (K)
+# IceLineNMax = latitude of northern edge of ice in northern hemisphere (deg)
+# IceLineNMin = latitude of southern edge of ice in northern hemisphere (deg)
+# IceLineSMax = latitude of northern edge of ice in southern hemisphere (deg)
+# IceLineSMin = latitude of southern edge of ice in southern hemisphere (deg)
+# Diff = diffusion coefficient actually used by the run (W m^-2 K^-1)
+# OLR = global, annual mean outgoing longwave radiation (W m^-2)
+#
+# Examples for IceLine max and min:
+# Polar caps: IceLineNMax = 90, IceLineNMin = 60, IceLineSMax = -60, IceLineSMin = -90
+# Snowball state: IceLineNMax = 90, IceLineNMin = 0, IceLineSMax = 0, IceLineSMin = -90
+# Ice free state: IceLineNMax = 90, IceLineNMin = 90, IceLineSMax = -90, IceLineSMin = -90
+# Ice belt: IceLineNMax = 30, IceLineNMin = 0, IceLineSMax = 0, IceLineSMin = -30
+# Note ice belt doesn't really have "edges" at 0 deg, but record as 0 anyway to
+# keep the columns the same length
+#
+# Case Inst Obl XCO2 Tglob IceLineNMax IceLineNMin IceLineSMax IceLineSMin Diff OLRglob
+0 1.5000 23.5 280.0000 338.28 90.0 90.0 -90.0 -90.0 0.5000 406.83
+1 1.4875 23.5 280.0000 337.17 90.0 90.0 -90.0 -90.0 0.5000 403.17
+2 1.4750 23.5 280.0000 336.05 90.0 90.0 -90.0 -90.0 0.5000 399.52
+3 1.4625 23.5 280.0000 334.93 90.0 90.0 -90.0 -90.0 0.5000 395.85
+4 1.4500 23.5 280.0000 333.81 90.0 90.0 -90.0 -90.0 0.5000 392.18
+5 1.4375 23.5 280.0000 332.68 90.0 90.0 -90.0 -90.0 0.5000 388.50
+6 1.4250 23.5 280.0000 331.55 90.0 90.0 -90.0 -90.0 0.5000 384.79
+7 1.4125 23.5 280.0000 330.40 90.0 90.0 -90.0 -90.0 0.5000 381.07
+8 1.4000 23.5 280.0000 329.26 90.0 90.0 -90.0 -90.0 0.5000 377.36
+9 1.3875 23.5 280.0000 328.11 90.0 90.0 -90.0 -90.0 0.5000 373.63
+10 1.3750 23.5 280.0000 326.96 90.0 90.0 -90.0 -90.0 0.5000 369.91
+11 1.3625 23.5 280.0000 325.80 90.0 90.0 -90.0 -90.0 0.5000 366.18
+12 1.3500 23.5 280.0000 324.64 90.0 90.0 -90.0 -90.0 0.5000 362.45
+13 1.3375 23.5 280.0000 323.48 90.0 90.0 -90.0 -90.0 0.5000 358.71
+14 1.3250 23.5 280.0000 322.32 90.0 90.0 -90.0 -90.0 0.5000 354.95
+15 1.3125 23.5 280.0000 321.15 90.0 90.0 -90.0 -90.0 0.5000 351.19
+16 1.3000 23.5 280.0000 319.97 90.0 90.0 -90.0 -90.0 0.5000 347.42
+17 1.2875 23.5 280.0000 318.78 90.0 90.0 -90.0 -90.0 0.5000 343.65
+18 1.2750 23.5 280.0000 317.58 90.0 90.0 -90.0 -90.0 0.5000 339.88
+19 1.2625 23.5 280.0000 316.38 90.0 90.0 -90.0 -90.0 0.5000 336.11
+20 1.2500 23.5 280.0000 315.16 90.0 90.0 -90.0 -90.0 0.5000 332.33
+21 1.2375 23.5 280.0000 313.93 90.0 90.0 -90.0 -90.0 0.5000 328.54
+22 1.2250 23.5 280.0000 312.68 90.0 90.0 -90.0 -90.0 0.5000 324.74
+23 1.2125 23.5 280.0000 311.42 90.0 90.0 -90.0 -90.0 0.5000 320.90
+24 1.2000 23.5 280.0000 310.13 90.0 90.0 -90.0 -90.0 0.5000 317.05
+25 1.1875 23.5 280.0000 308.82 90.0 90.0 -90.0 -90.0 0.5000 313.20
+26 1.1750 23.5 280.0000 307.43 90.0 90.0 -90.0 -90.0 0.5000 309.19
+27 1.1625 23.5 280.0000 306.00 90.0 90.0 -90.0 -90.0 0.5000 305.13
+28 1.1500 23.5 280.0000 304.51 90.0 90.0 -90.0 -90.0 0.5000 301.00
+29 1.1375 23.5 280.0000 302.97 90.0 90.0 -90.0 -90.0 0.5000 296.85
+30 1.1250 23.5 280.0000 301.21 90.0 90.0 -90.0 -90.0 0.5000 292.26
+31 1.1125 23.5 280.0000 299.40 90.0 84.8 -84.8 -90.0 0.5000 287.63
+32 1.1000 23.5 280.0000 297.65 90.0 79.4 -79.4 -90.0 0.5000 283.17
+33 1.0875 23.5 280.0000 295.87 90.0 74.5 -74.5 -90.0 0.5000 278.70
+34 1.0750 23.5 280.0000 294.03 90.0 71.5 -71.5 -90.0 0.5000 274.17
+35 1.0625 23.5 280.0000 291.69 90.0 67.6 -67.6 -90.0 0.5000 268.66
+36 1.0500 23.5 280.0000 289.23 90.0 65.0 -63.7 -90.0 0.5000 262.90
+37 1.0375 23.5 280.0000 287.31 90.0 61.8 -61.8 -90.0 0.5000 258.46
+38 1.0250 23.5 280.0000 285.08 90.0 59.1 -59.1 -90.0 0.5000 253.34
+39 1.0125 23.5 280.0000 282.07 90.0 55.2 -55.2 -90.0 0.5000 246.51
+40 1.0000 23.5 280.0000 279.16 90.0 52.0 -52.0 -90.0 0.5000 240.00
+41 0.9875 23.5 280.0000 276.07 90.0 48.4 -48.4 -90.0 0.5000 233.14
+42 0.9750 23.5 280.0000 271.08 90.0 42.7 -42.7 -90.0 0.5000 222.03
+43 0.9625 23.5 280.0000 266.54 90.0 37.5 -37.5 -90.0 0.5000 211.99
+44 0.9500 23.5 280.0000 226.71 90.0 0.0 0.0 -90.0 0.5000 129.42
+45 0.9375 23.5 280.0000 225.61 90.0 0.0 0.0 -90.0 0.5000 127.32
+46 0.9250 23.5 280.0000 224.52 90.0 0.0 0.0 -90.0 0.5000 125.25
+47 0.9125 23.5 280.0000 223.43 90.0 0.0 0.0 -90.0 0.5000 123.21
+48 0.9000 23.5 280.0000 222.35 90.0 0.0 0.0 -90.0 0.5000 121.19
+49 0.8875 23.5 280.0000 221.28 90.0 0.0 0.0 -90.0 0.5000 119.19
+50 0.8750 23.5 280.0000 220.21 90.0 0.0 0.0 -90.0 0.5000 117.23
+51 0.8625 23.5 280.0000 219.15 90.0 0.0 0.0 -90.0 0.5000 115.28
+52 0.8500 23.5 280.0000 218.09 90.0 0.0 0.0 -90.0 0.5000 113.36
+53 0.8375 23.5 280.0000 217.03 90.0 0.0 0.0 -90.0 0.5000 111.45
+54 0.8250 23.5 280.0000 215.98 90.0 0.0 0.0 -90.0 0.5000 109.55
+55 0.8125 23.5 280.0000 214.93 90.0 0.0 0.0 -90.0 0.5000 107.68
+56 0.8000 23.5 280.0000 213.88 90.0 0.0 0.0 -90.0 0.5000 105.83

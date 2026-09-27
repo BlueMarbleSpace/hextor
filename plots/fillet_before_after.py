@@ -250,6 +250,10 @@ def panel_sweep(ax_b, ax_n, tag, title):
         S, O, grid = state_grid(g)
         grids[ax] = (S, O, grid)
         ax.pcolormesh(edges(S), edges(O), grid, cmap=cmap, norm=norm, edgecolors="white", linewidth=0.6)
+        if ax is ax_n and g_b is not None:
+            S_b0 = np.unique(np.round(g_b["Inst"], 4))
+            if len(S_b0) == len(S):
+                S = S_b0 if np.allclose(S_b0, S, atol=0.006) else S
         ax.set_xlim(edges(S)[0], edges(S)[-1]); ax.set_ylim(-5, 95)
         ax.set_yticks([0, 30, 60, 90])
         ax.set_xlabel("instellation (S_earth)")
@@ -258,15 +262,13 @@ def panel_sweep(ax_b, ax_n, tag, title):
     ax_b.set_ylabel("obliquity")
     if ax_b in grids and ax_n in grids:
         S_b, O_b, grid_b = grids[ax_b]; S_n, O_n, grid_n = grids[ax_n]
-        if grid_b.shape == grid_n.shape and np.allclose(S_b, S_n):
+        if grid_b.shape == grid_n.shape and np.allclose(S_b, S_n, atol=0.006):
             changed = grid_b != grid_n
             yy, xx = np.nonzero(changed)
             ax_n.scatter(S_n[xx], O_n[yy], s=9, color=INK, edgecolors="white", linewidths=0.8, zorder=3)
-            ax_n.text(1.0, 1.03, f"{changed.sum()} of {changed.size} states changed",
-                      transform=ax_n.transAxes, ha="right", va="bottom", fontsize=7.6, color=INK2)
+            note(ax_n, f"{changed.sum()} of {changed.size} states changed", loc="upper right")
             return int(changed.sum()), int(changed.size)
-        ax_n.text(1.0, 1.03, "grids differ: the archived run used the Experiment 1a axis range",
-                  transform=ax_n.transAxes, ha="right", va="bottom", fontsize=7.4, color=INK2)
+        note(ax_n, "grids differ: the archived run\nused the Experiment 1a axis range", loc="upper right")
     return None
 
 

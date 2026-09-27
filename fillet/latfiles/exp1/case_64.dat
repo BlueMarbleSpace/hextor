@@ -1,0 +1,43 @@
+# FILLET Experiment 1 with HEXTOR 4.2.1-42-g75f5fb1
+# Model: HEXTOR 4.2.1-42-g75f5fb1 (FILLET re-file, September 2026); 18 latitude belts of 10 deg, seasonal cycle, explicit 730 steps per orbit (dt = 43226.5 s, set by nstepyr).
+# Radiation: 1 bar lookup table ./radiation/radiation_N2_CO2_Sun.h5 (clear sky; CO2 axis 100 ppm - 0.91, T 190-370 K with power-law extrapolation outside; CO2 below 100 ppm is clamped to the axis floor); no cloud albedo (fcloud = 0); cloudir = 0.00 W m^-2 (untuned).
+# Transport: D = 0.50 W m^-2 K^-1 constant (diffadj off); the Diff column is the value used.
+# Surface: surface albedo ocean 0.20 / land 0.30 / snow-ice 0.60; heat capacities land 1e7, water 4e8, ice 1e7 J m^-2 K^-1; ocean fraction 0.75 in every belt; sea-ice fraction 1 - exp((T - 273.15 K)/10 K) between 273.15 and 263.15 K and 1 below; land snow below 273.15 K.
+# Orbit: a = 1 au, e = 0, year 365.22 d.
+# Initial state: uniform 288 K (warm start) or 233 K (cold start) as noted per experiment; every case starts from that state (no continuation).
+# Convergence: halt when the year-to-year change in global-mean OLR falls below 1e-03 W m^-2, or when it repeats to that tolerance over a cycle of up to 4 years (a periodic seasonal oscillation; the case then reports one phase of the cycle) (cap 5000 orbits); one further orbit provides the annual means. Per-case records in logs/.
+# Numerics switches: diffcons = .true..
+#
+# Name of benchmark/experiment: Experiment 1
+# Case number: 64
+# Instellation (S_earth): 0.9500
+# XCO2 (ppm): 280.0000
+# Obliquity (degrees): 40.0
+# Initial state: uniform 288 K
+# Convergence: 34 orbits, year-to-year OLR test met; final year-to-year |dOLR| = 1.068e-04 W m^-2, |dTglob| = 7.058e-05 K; north-south asymmetry of the annual-mean belt temperatures = 0.0000 K
+#
+# Columns of data (annually averaged for last orbit)
+# Lat = latitude of belt centre (degrees)
+# Tsurf = annual mean surface temperature (K)
+# Asurf = insolation-weighted annual mean surface albedo
+# ATOA = insolation-weighted annual mean top-of-atmosphere/planetary albedo (1 - ASR/S)
+# OLR = annual mean outgoing longwave radiation (W m^-2)
+# Lat Tsurf Asurf ATOA OLR
+-85.0 226.92 0.4956 0.5030  136.18
+-75.0 226.99 0.5028 0.5137  135.82
+-65.0 227.28 0.5162 0.5244  135.45
+-55.0 227.76 0.5403 0.5342  135.16
+-45.0 228.38 0.6000 0.5840  134.94
+-35.0 229.55 0.6000 0.5895  135.90
+-25.0 230.84 0.6000 0.5919  137.32
+-15.0 231.92 0.6000 0.5914  138.66
+ -5.0 232.55 0.6000 0.5891  139.48
+  5.0 232.55 0.6000 0.5891  139.48
+ 15.0 231.92 0.6000 0.5914  138.66
+ 25.0 230.84 0.6000 0.5919  137.32
+ 35.0 229.55 0.6000 0.5895  135.90
+ 45.0 228.38 0.6000 0.5840  134.94
+ 55.0 227.76 0.5403 0.5342  135.16
+ 65.0 227.28 0.5162 0.5244  135.45
+ 75.0 226.99 0.5028 0.5137  135.82
+ 85.0 226.92 0.4956 0.5030  136.18
