@@ -169,6 +169,17 @@ amplitude.
   orbit. Experiments 1a/2a vary the orbital period with a^1.5.
 - **Experiment 2a:** 0.8–0.975 au, 150 cases (the archived and 4.2.0 files used
   the Experiment 1a range).
+- **Regeneration:** `python tools/run_fillet.py --exp all --label 'FILLET
+  re-file, September 2026' --cloudir-ben1 9.3695 --diffcons --nstepyr 730`,
+  the runner's defaults since the audit of 2026-09-27 (the archive was first
+  generated with `--extra-ebm 'diffcons = .true.' --extra-ebm 'nstepyr = 730'`,
+  the same thing), then `tar czf fillet/fillet_hextor.tar.gz -C fillet/Results
+  hextor`. Seven minutes at four jobs. A fresh clone of the tag builds with
+  `cd model && make` and passes the regression test with that binary. The
+  files inside the 4.3.0 tag carry `4.2.1-42-g75f5fb1` in their two version
+  lines (commit 75f5fb1, whose model source is identical to the tag); they were
+  regenerated at the tag with the fresh clone's binary so the headers read
+  `HEXTOR 4.3.0`, with every data row unchanged.
 
 ## 6. Results
 
@@ -261,7 +272,9 @@ more where the polar or substellar belts carry steep gradients.
 - The ice-line convention stays at 263.15 K until Protocol v1.2 fixes one.
 - Per-case latitude files for the experiments are kept in the repository
   (`fillet/latfiles/`), not filed: the archive README asks for none.
-- Tagging, pushing, the Zenodo deposit and the pull request wait for Jacob.
+- Tagged 4.3.0 and released on GitHub and Zenodo on 2026-09-27 (version DOI
+  10.5281/zenodo.22999531 under the concept DOI 10.5281/zenodo.20074008). The
+  pull request waits for Rory's confirmation of the Experiment 3/4 base.
 
 ## 8. Effect on other published results
 

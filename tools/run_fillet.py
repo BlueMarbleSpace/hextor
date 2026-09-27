@@ -7,10 +7,22 @@ new number -- and ran Experiment 2a on the Experiment 1a grid.  Every case is
 run in its own scratch directory, in parallel, from a namelist written here,
 so the whole configuration is in one place and is printed into the headers.
 
-    python tools/run_fillet.py --exp all                    # everything
+    python tools/run_fillet.py --exp all                    # the 4.3.0 submission
     python tools/run_fillet.py --exp ben1 ben2 ben3 --jobs 2
-    python tools/run_fillet.py --exp exp4 --extra-ebm 'diffcons = .true.' \
-        --label 'conservative diffusion' --outdir fillet_diffcons
+    python tools/run_fillet.py --exp exp4 --no-diffcons --nstepyr 0 \
+        --label 'published numerics' --outdir fillet_published
+
+The defaults are the configuration of the September 2026 re-file (HEXTOR
+4.3.0): Benchmark 1 tuned through cloudir alone (9.3695 W/m2), untuned
+Benchmarks 2/3 and experiments at D = 0.5, flux-conservative diffusion, 730
+steps per orbit, fluxcnvg 1e-3 with cnvgcycle 4.  Spelled out in full:
+
+    python tools/run_fillet.py --exp all --label 'FILLET re-file, September 2026' \
+        --cloudir-ben1 9.3695 --diffcons --nstepyr 730
+
+About seven minutes at four jobs.  Repack the tarball afterwards:
+
+    tar czf fillet/fillet_hextor.tar.gz -C fillet/Results hextor
 
 Outputs, under --outdir (default fillet/):
     Results/hextor/<exp>/global_output.dat        the projectcuisines/fillet layout
@@ -156,8 +168,8 @@ def namelist(exp, case, args):
         lines += ['   cl           = 1.e7,',
                   '   cw           = 4.e8,',
                   '   ci           = 1.e7,']
-    for extra in args.extra_ebm:
-        lines.append('   %s,' % extra.strip().rstrip(','))
+    for extra in switch_lines(args):
+        lines.append('   %s,' % extra)
     lines += ['   fillet       = .true. /',
               '',
               '&radiation',
@@ -194,6 +206,24 @@ def namelist(exp, case, args):
               '   noisevar      = 0.334 /',
               '']
     return '\n'.join(lines)
+
+
+def switch_lines(args):
+    """The numerics-switch lines of &ebm: --diffcons and --nstepyr, then any
+    --extra-ebm lines.  An extra line that sets the same variable replaces the
+    flag, so the spelling the archive was first generated with,
+    --extra-ebm 'diffcons = .true.' --extra-ebm 'nstepyr = 730', still works."""
+    extras = [e.strip().rstrip(',') for e in args.extra_ebm]
+
+    def given(name):
+        return any(e.replace(' ', '').startswith(name + '=') for e in extras)
+
+    lines = []
+    if args.diffcons and not given('diffcons'):
+        lines.append('diffcons = .true.')
+    if args.nstepyr and not given('nstepyr'):
+        lines.append('nstepyr = %d' % args.nstepyr)
+    return lines + extras
 
 
 def prepare_rundir(rundir, modeldir):
@@ -285,8 +315,7 @@ def config_lines(exp, args, version):
                  (args.cloudir, 'untuned' if args.cloudir == 0.0 else 'declared offset'))
         surf = ('surface albedo ocean 0.20 / land 0.30 / snow-ice 0.60; heat capacities land 1e7, '
                 'water 4e8, ice 1e7 J m^-2 K^-1; ocean fraction 0.75 in every belt')
-    steps = ('%.0f s (%d per orbit, set by nstepyr)' % (0, 0))  # placeholder, replaced below
-    nstep = None
+    nstep = args.nstepyr
     for e in args.extra_ebm:
         if e.replace(' ', '').startswith('nstepyr='):
             nstep = int(e.split('=')[1].strip(' ,'))
@@ -299,8 +328,8 @@ def config_lines(exp, args, version):
     orbit = 'a = 1 au, e = 0, year %.2f d' % period
     if exp in ('exp1a', 'exp2a'):
         orbit = 'a varied with S = S_earth / a^2, e = 0, year = %.2f d x a^1.5' % period
-    extras = [e for e in args.extra_ebm if not e.replace(' ', '').startswith('nstepyr=')]
-    numerics = ', '.join(extras) if extras else 'published defaults (no numerics switches set)'
+    switches = [s for s in switch_lines(args) if not s.replace(' ', '').startswith('nstepyr=')]
+    numerics = ', '.join(switches) if switches else 'published defaults (no numerics switches set)'
     return [
         '# Model: HEXTOR %s (%s); 18 latitude belts of 10 deg, seasonal cycle, explicit %s.' % (version, args.label, steps),
         '# Radiation: 1 bar lookup table %s (clear sky; CO2 axis 100 ppm - 0.91, T 190-370 K with power-law'
@@ -434,19 +463,26 @@ def main():
     ap.add_argument('--timeout', type=float, default=7200.0)
     ap.add_argument('--force', action='store_true', help='rerun cases that have results')
     ap.add_argument('--dry-run', action='store_true', help='list the cases and stop')
-    ap.add_argument('--label', default='FILLET re-file',
+    ap.add_argument('--label', default='FILLET re-file, September 2026',
                     help='short description written into every header')
     # configuration
     ap.add_argument('--cloudir', type=float, default=0.0,
                     help='longwave cloud offset for Ben2/3 and all experiments (W/m2; 0 = untuned)')
-    ap.add_argument('--cloudir-ben1', type=float, default=3.0,
-                    help='the tuned Benchmark 1 offset (W/m2)')
+    ap.add_argument('--cloudir-ben1', type=float, default=9.3695,
+                    help='the tuned Benchmark 1 offset (W/m2; tools/tune_fillet_ben1.py gives '
+                         '9.3695 for 288.0 K with the other defaults)')
     ap.add_argument('--d0', type=float, default=0.5, help='D for Ben2/3 and experiments')
     ap.add_argument('--d0-ben1', type=float, default=0.38, help='Benchmark 1 d0 (diffadj on)')
     ap.add_argument('--diffadj', action='store_true',
                     help='rescale D by pressure, composition and rotation in Ben2/3 and experiments '
                          '(the pre-4.3.0 files did this while filing d0)')
-    ap.add_argument('--dt', type=float, default=43200.0, help='time step (s), unless nstepyr is set')
+    ap.add_argument('--dt', type=float, default=43200.0, help='time step (s) when --nstepyr is 0')
+    ap.add_argument('--nstepyr', type=int, default=730,
+                    help='steps per orbit (even; 0 = the published clock, dt from --dt and a model '
+                         'year of the next whole step)')
+    ap.add_argument('--diffcons', action=argparse.BooleanOptionalAction, default=True,
+                    help='flux-conservative diffusion on the true belt edges '
+                         '(--no-diffcons: the published operator)')
     ap.add_argument('--fluxcnvg', type=float, default=1.0e-3,
                     help='halt when the year-to-year change in global OLR is below this (W/m2)')
     ap.add_argument('--icelinetemp', type=float, default=263.15,
@@ -457,7 +493,8 @@ def main():
     ap.add_argument('--twarm', type=float, default=288.0)
     ap.add_argument('--tcold', type=float, default=233.0)
     ap.add_argument('--extra-ebm', action='append', default=[],
-                    help="extra &ebm line, e.g. 'diffcons = .true.' or 'nstepyr = 730' (repeatable)")
+                    help="extra &ebm line, e.g. 'icecont = .true.' (repeatable; a line that sets "
+                         "diffcons or nstepyr replaces the flag)")
     ap.add_argument('--asym-warn', type=float, default=0.05,
                     help='flag cases whose N-S asymmetry exceeds this (K)')
     args = ap.parse_args()

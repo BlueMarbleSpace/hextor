@@ -1,5 +1,5 @@
-# FILLET Experiment 1 with HEXTOR 4.2.1-42-g75f5fb1
-# Model: HEXTOR 4.2.1-42-g75f5fb1 (FILLET re-file, September 2026); 18 latitude belts of 10 deg, seasonal cycle, explicit 730 steps per orbit (dt = 43226.5 s, set by nstepyr).
+# FILLET Experiment 1 with HEXTOR 4.3.0
+# Model: HEXTOR 4.3.0 (FILLET re-file, September 2026); 18 latitude belts of 10 deg, seasonal cycle, explicit 730 steps per orbit (dt = 43226.5 s, set by nstepyr).
 # Radiation: 1 bar lookup table ./radiation/radiation_N2_CO2_Sun.h5 (clear sky; CO2 axis 100 ppm - 0.91, T 190-370 K with power-law extrapolation outside; CO2 below 100 ppm is clamped to the axis floor); no cloud albedo (fcloud = 0); cloudir = 0.00 W m^-2 (untuned).
 # Transport: D = 0.50 W m^-2 K^-1 constant (diffadj off); the Diff column is the value used.
 # Surface: surface albedo ocean 0.20 / land 0.30 / snow-ice 0.60; heat capacities land 1e7, water 4e8, ice 1e7 J m^-2 K^-1; ocean fraction 0.75 in every belt; sea-ice fraction 1 - exp((T - 273.15 K)/10 K) between 273.15 and 263.15 K and 1 below; land snow below 273.15 K.

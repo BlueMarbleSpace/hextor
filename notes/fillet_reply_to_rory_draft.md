@@ -1,14 +1,14 @@
 # Draft reply to Rory (FILLET code comparison, HEXTOR)
 
-*Draft, 2026-09-27. Numbers from `notes/fillet_refile_2026.md`. Release
-tag, Zenodo DOI and the pull request are placeholders until they exist.*
+*Draft, 2026-09-27. Numbers from `notes/fillet_refile_2026.md`. The pull
+request is a placeholder until it exists.*
 
 Rory,
 
 Thanks for the audit. Every HEXTOR finding in §4.2 checked out against the
 source, and we have worked through your §9 list. The result is HEXTOR 4.3.0
 (https://github.com/BlueMarbleSpace/hextor/releases/tag/4.3.0, Zenodo
-[DOI]). The attached figure compares the archived submission with the new
+https://doi.org/10.5281/zenodo.22999531). The attached figure compares the archived submission with the new
 files for every benchmark and experiment.
 
 What changed

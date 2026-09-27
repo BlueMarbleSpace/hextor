@@ -61,7 +61,17 @@ measured effect.
 `python tools/run_fillet.py --exp all` runs the FILLET benchmarks and
 experiments and writes the `projectcuisines/fillet` archive layout under
 `fillet/Results/hextor/`, with per-case latitude files and convergence records
-beside it. `tools/tune_fillet_ben1.py` tunes Benchmark 1, `tools/fillet_compare.py`
+beside it. Its defaults are the configuration of the 4.3.0 submission, so that
+command regenerates the filed files (about seven minutes at four jobs; repack
+the tarball afterwards). Spelled out in full:
+
+    python tools/run_fillet.py --exp all --label 'FILLET re-file, September 2026' \
+        --cloudir-ben1 9.3695 --diffcons --nstepyr 730
+    tar czf fillet/fillet_hextor.tar.gz -C fillet/Results hextor
+
+`--no-diffcons --nstepyr 0` gives the published numerics; other switches go in
+as `--extra-ebm 'icecont = .true.'`. Every header states the configuration.
+`tools/tune_fillet_ben1.py` tunes Benchmark 1, `tools/fillet_compare.py`
 scores two states of the submission, and `plots/fillet_before_after.py` draws
 them. `notes/fillet_review_roadmap.md` and `notes/fillet_refile_2026.md`
 record the September 2026 code comparison and the re-file.
