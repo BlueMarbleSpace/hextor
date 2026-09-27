@@ -20,6 +20,6 @@
  step =           14
  step =           15
  Flux converged at year    15.0000000000000       (dOLR =
-  4.119873046875000E-004 W/m2)
+  4.272460937500000E-004 W/m2)
  The energy-balance calculation is complete.
- SH/NH temperature difference =   -53.0261260850563     
+ SH/NH temperature difference =   -53.0261489421307     

@@ -1,5 +1,6 @@
+ radiation_init: legacy table repeats 1 CO2 level(s); collapsed
  radiation_init: ./radiation/radiation_N2_CO2_2600K.h5
-   grid: npre=1 nco2=92 nch4=1 ntmp=19 nzen=4 nsab=5
+   grid: npre=1 nco2=91 nch4=1 ntmp=19 nzen=4 nsab=5
    p_dry  [bar]:  1.000E+00 ..  1.000E+00
    fco2        :  9.996E-05 ..  9.091E-01
    fch4        : none (table has no CH4 axis)
@@ -57,6 +58,6 @@
  step =           51
  step =           52
  Flux converged at year    52.0000000000000       (dOLR =
-  3.982543945312500E-003 W/m2)
+  3.997802734375000E-003 W/m2)
  The energy-balance calculation is complete.
- SH/NH temperature difference =   -60.6792315509897     
+ SH/NH temperature difference =   -60.6791995319559     

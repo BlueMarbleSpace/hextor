@@ -72,7 +72,7 @@ implicit none
 
 public  :: radiation_init, radiation_end, getOLR, getPALB
 public  :: radiation_nch4, radiation_ch4_range
-private :: bracket, read_table_v2, read_table_v1, fit_extrap_exponents
+private :: bracket, read_table_v2, read_table_v1, fit_extrap_exponents, check_cells
 !==================================================================================
 
   ! ---- v1 (legacy) fixed grid -----------------------------------------------
@@ -113,6 +113,11 @@ private :: bracket, read_table_v2, read_table_v1, fit_extrap_exponents
   ! rather than assuming T^4.
   real, allocatable :: n_eff_upper(:,:,:)      ! (nch4, nco2, npre)
   real, allocatable :: n_eff_lower(:,:,:)      ! (nch4, nco2, npre)
+
+  ! Cells a legacy (v1) table left unset: its CO2-condensing corner (fco2 >=
+  ! 0.41 with T <= 230 K) holds -1 sentinels.  .true. everywhere for v2/v3,
+  ! whose sanity check refuses a table with bad cells outright.
+  logical, allocatable :: cell_ok(:,:)          ! (ntmp, nco2)
 
 contains
 
@@ -257,6 +262,8 @@ subroutine read_table_v2
   allocate( zenilevels(nzen), albelevels(nsab) )
   allocate( olr_table(ntmp, nch4, nco2, npre) )
   allocate( palb_table(nsab, nzen, ntmp, nch4, nco2, npre) )
+  allocate( cell_ok(ntmp, nco2) )
+  cell_ok = .true.
 
   ! With nch4 = 1 the in-memory array has exactly the element count and
   ! ordering of the rank-5 v2 dataset, so the same read fills it.
@@ -325,20 +332,15 @@ subroutine read_table_v1
   integer          :: error, i, j, ico2, itmp, izen, ialb
   real, allocatable :: database_olr(:,:)
   real, allocatable :: database_alb(:,:)
+  real, allocatable :: uniq(:)
+  integer, allocatable :: map(:)
 
   npre = 1
-  nco2 = nco2_v1
   nch4 = 1
   table_has_ch4 = .false.
   ntmp = ntmp_v1
   nzen = 4
   nsab = 5
-
-  allocate( prelevels(npre), fco2levels(nco2), templevels(ntmp) )
-  allocate( ch4levels(nch4) )
-  allocate( zenilevels(nzen), albelevels(nsab) )
-  allocate( olr_table(ntmp, nch4, nco2, npre) )
-  allocate( palb_table(nsab, nzen, ntmp, nch4, nco2, npre) )
 
   allocate( database_olr(nolr_v1, dolr_v1) )
   allocate( database_alb(nalb_v1, dalb_v1) )
@@ -353,24 +355,57 @@ subroutine read_table_v1
   call h5dread_f( dset_id, H5T_NATIVE_DOUBLE, database_alb, dims_alb, error )
   call h5dclose_f( dset_id, error )
 
+  ! The legacy files list one CO2 level twice (2.4989e-4, rows 7 and 8 of
+  ! 92).  Albedo rows are mapped onto the grid by value below, so the second
+  ! copy's cells were never written, and a lookup bracketed on that index --
+  ! any fco2 in [249.9, 274.9) ppm -- read uninitialised memory.  Collapse
+  ! repeated levels first, keeping the first copy; no other lookup changes.
+  allocate( uniq(nco2_v1), map(nco2_v1) )
+  nco2 = 0
+  do i = 1, nco2_v1
+    if ( nco2 .eq. 0 ) then
+      nco2 = 1
+      uniq(1) = database_olr(2, i)
+    else if ( database_olr(2, i) .ne. uniq(nco2) ) then
+      nco2 = nco2 + 1
+      uniq(nco2) = database_olr(2, i)
+    end if
+    map(i) = nco2
+  end do
+  if ( nco2 .lt. nco2_v1 ) then
+    write(*,'(a,i0,a)') " radiation_init: legacy table repeats ",            &
+         nco2_v1 - nco2, " CO2 level(s); collapsed"
+  end if
+
+  allocate( prelevels(npre), fco2levels(nco2), templevels(ntmp) )
+  allocate( ch4levels(nch4) )
+  allocate( zenilevels(nzen), albelevels(nsab) )
+  allocate( olr_table(ntmp, nch4, nco2, npre) )
+  allocate( palb_table(nsab, nzen, ntmp, nch4, nco2, npre) )
+  allocate( cell_ok(ntmp, nco2) )
+
   ! The legacy tables were computed for 1 bar of N2 background.
   prelevels  = (/ 1.0 /)
   ch4levels  = (/ 0.0 /)
-  fco2levels = database_olr(2, :nco2)
-  templevels = database_olr(3, ::nco2)
+  fco2levels = uniq(:nco2)
+  templevels = database_olr(3, ::nco2_v1)
   zenilevels = (/ 0., 30., 60., 90. /)
   albelevels = (/ 0.2, 0.4, 0.6, 0.8, 1.0 /)
 
-  ! OLR: CO2 is the inner loop, T the outer, in the flat data.  Stored negated
-  ! on disk; flip to a positive flux here.
+  ! OLR: CO2 is the inner loop (all nco2_v1 rows, repeats included), T the
+  ! outer, in the flat data.  Stored negated on disk; flip to a positive flux.
   do j = 1, ntmp
-    do i = 1, nco2
-      olr_table(j, 1, i, 1) = -database_olr(4, (j-1)*nco2 + i)
+    do i = 1, nco2_v1
+      if ( i .eq. 1 .or. map(i) .ne. map(i-1) ) then
+        olr_table(j, 1, map(i), 1) = -database_olr(4, (j-1)*nco2_v1 + i)
+      end if
     end do
   end do
 
   ! PALB: row ordering in the flat data is not guaranteed, so map each row onto
-  ! the grid via its own axis values.
+  ! the grid via its own axis values.  Start from the sentinel so that a cell
+  ! no row fills is recognisably bad rather than whatever memory held.
+  palb_table = -1.0
   do i = 1, dalb_v1
     ico2 = minloc( abs( fco2levels - database_alb(2,i) ), 1 )
     itmp = minloc( abs( templevels - database_alb(3,i) ), 1 )
@@ -379,8 +414,21 @@ subroutine read_table_v1
     palb_table(ialb, izen, itmp, 1, ico2, 1) = database_alb(6,i)
   end do
 
+  ! Sentinels: the files mark the CO2-condensing corner (fco2 >= 0.41 with
+  ! T <= 230 K) with -1, which the sign flip turns into +1 mW/m^2 of OLR, so
+  ! the non-finite check in fit_extrap_exponents does not see it.  Mark those
+  ! cells, and let getOLR / getPALB refuse to interpolate across them rather
+  ! than return an OLR of 0.001 W/m^2 and a negative albedo.
+  do i = 1, nco2
+    do j = 1, ntmp
+      cell_ok(j, i) = olr_table(j, 1, i, 1) .gt. 100.0 .and.                  &
+                      all( palb_table(:, :, j, 1, i, 1) .ge. 0.0 )
+    end do
+  end do
+
   deallocate( database_olr )
   deallocate( database_alb )
+  deallocate( uniq, map )
 
   return
 
@@ -493,6 +541,25 @@ end function axfrac
 
 !==================================================================================
 
+! Refuse a lookup whose (T, CO2) corners include a cell the legacy table left
+! unset (see cell_ok).  Four logical loads per call, so it costs nothing.
+subroutine check_cells( tmplo, tmphi, co2lo, co2hi, fco2, tg0 )
+
+  integer, intent(in) :: tmplo, tmphi, co2lo, co2hi
+  real,    intent(in) :: fco2, tg0
+
+  if ( cell_ok(tmplo,co2lo) .and. cell_ok(tmphi,co2lo) .and.                   &
+       cell_ok(tmplo,co2hi) .and. cell_ok(tmphi,co2hi) ) return
+  write(*,'(a,es10.3,a,f7.2,a)') " radiation_mod: lookup at fco2 = ", fco2,   &
+       ", T = ", tg0, " K falls on cells the legacy table left unset"
+  write(*,'(a)') "   (its CO2-condensing corner, fco2 >= 0.41 with T <= 230 " // &
+       "K); use a pressure-resolved table for this atmosphere."
+  stop
+
+end subroutine check_cells
+
+!==================================================================================
+
 subroutine getOLR( pdry, fco2, fch4, tg0, olr )
 
 ! Outgoing longwave radiation [mW/m^2 — see the units note in the module
@@ -522,6 +589,8 @@ subroutine getOLR( pdry, fco2, fch4, tg0, olr )
   call bracket( fco2levels, nco2, fco2,    co2lo, co2hi )
   call bracket( ch4levels, nch4, fch4,     ch4lo, ch4hi )
   call bracket( templevels, ntmp, tg0_eval, tmplo, tmphi )
+
+  call check_cells( tmplo, tmphi, co2lo, co2hi, fco2, tg0 )
 
   prefrac = axfrac( prelevels,  prelo, prehi, pdry,     .true.  )
   co2frac = axfrac( fco2levels, co2lo, co2hi, fco2,     .true.  )
@@ -606,6 +675,8 @@ subroutine getPALB( pdry, fco2, fch4, tg0, zy, surfalb, palb )
   call bracket( zenilevels, nzen, zy,      zenlo, zenhi )
   call bracket( albelevels, nsab, surfalb, alblo, albhi )
 
+  call check_cells( tmplo, tmphi, co2lo, co2hi, fco2, tg0 )
+
   prefrac = axfrac( prelevels,  prelo, prehi, pdry,    .true.  )
   co2frac = axfrac( fco2levels, co2lo, co2hi, fco2,    .true.  )
   ch4frac = axfrac( ch4levels,  ch4lo, ch4hi, fch4,    .true.  )
@@ -662,6 +733,7 @@ subroutine radiation_end
   if ( allocated(albelevels)  ) deallocate( albelevels )
   if ( allocated(n_eff_upper) ) deallocate( n_eff_upper )
   if ( allocated(n_eff_lower) ) deallocate( n_eff_lower )
+  if ( allocated(cell_ok)     ) deallocate( cell_ok )
 
 end subroutine radiation_end
 

@@ -104,12 +104,14 @@ c----------------------------------------------------------------------c
      &  mu(nbelts),s(nbelts),atoa(nbelts),surfalb(nbelts),
      &  acloud(nbelts),zntempmin(nbelts),zntempmax(nbelts),area(nbelts),
      &  zntempsum(nbelts),zntempave(0:nbelts+1),zndecmax(nbelts),
-     &  zndecmin(nbelts),obstemp(nbelts),iceline(0:5),fice(nbelts),
+     &  zndecmin(nbelts),obstemp(nbelts),iceline(0:nbelts),fice(nbelts),
      &  wthrate(nbelts),warea(nbelts),imco2(nbelts), diff(nbelts),
      &  stab(0:nbelts), znalbsum(nbelts), znalbave(nbelts),
      &  znolrsum(nbelts), znolrave(nbelts),
      &  znasrsum(nbelts), znasrave(nbelts),
-     &  znsurfalbsum(nbelts), znsurfalbave(nbelts)
+     &  znsurfalbsum(nbelts), znsurfalbave(nbelts),
+     &  znssum(nbelts), znalbwsum(nbelts), znalbwave(nbelts),
+     &  znsurfalbwsum(nbelts), znsurfalbwave(nbelts)
 
       character  header*80,file(0:3)*8,radfile*256
       logical seasons, last, linrad, linalb, cloudalb
@@ -138,6 +140,10 @@ c----------------------------------------------------------------------c
       integer*4 now(3)
       real total, snowalb, tempinit, solarcon, fco2, icetemp, addghg
       real fluxcnvg, prev_irave
+      real icelinetemp, asymns, dolrfin, dtglobfin
+      real edgeNpole, edgeNeq, edgeSpole, edgeSeq
+      integer nedgeN, nedgeS
+      logical converged
       dimension solcon(niter),prec(niter),ecce(niter),
      &  yrlabel(niter),obliq(niter)
       dimension solconD(ndays),precD(ndays),ecceD(ndays),
@@ -153,7 +159,8 @@ c----------------------------------------------------------------------c
      &               iterhalt, fco2, fh2, fch4, pg0, tempinit, msun,
      &               do_longitudinal, do_manualseasons,
      &               cl, cw, ci, do_dailyoutput, fillet,
-     &               haltonCO2cond, fluxcnvg, moistdiff, rhmoist
+     &               haltonCO2cond, fluxcnvg, moistdiff, rhmoist,
+     &               icelinetemp
 
       NAMELIST /radiation/ relsolcon, radparam, groundalb, snowalb,
      &               landsnowfrac, cloudir, fcloud, cloudalb, soladj,
@@ -247,6 +254,7 @@ c  the year-0 row of tempseries.out depend on the variable layout.
       iterhalt = .false.  ! set .true. to enable halt based on iterations
       fluxcnvg = 0.1      ! OLR convergence threshold (W/m²) for iterhalt mode
       prev_irave = 0.
+      prevtempave = 0.
       do_cs_cycle = .false. !set .true. to enable carbonate-silicate cycle
       do_h2_cycle = .false. !set .true. to enable H2 cycle
       do_bioprod = .false.  !set .true. to enable the biological productivity function from Caldeira and Kasting (1992)
@@ -281,6 +289,15 @@ c  the year-0 row of tempseries.out depend on the variable layout.
       nt = 1          !counter for number of timesteps 
       daynum = 1          !counter for number of days per orbit
       icetemp = 263.15    !threshold for iceline
+c  icelinetemp is the threshold of the REPORTED ice line (annual-mean
+c  crossing, out/icelines.out and the FILLET columns).  icetemp itself also
+c  ends the sea-ice ramp, so a different reporting convention (FILLET
+c  Protocol v1.2 proposes 273.15 K) must be set through icelinetemp, not
+c  through icetemp, or it would turn the ramp into a step.
+      icelinetemp = icetemp
+      converged = .false. !set at the halt; written to out/convergence.out
+      dolrfin = -1.0
+      dtglobfin = -1.0
       gammaout = 1.0      !initial value of biological productivity function relative to present Earth
       addghg = 0          !additional greenhouse gas IR warming
       haltonCO2cond = .true. !halt execution when CO2 begins condensing
@@ -313,6 +330,12 @@ c  OPEN FILES
       open (unit=18,file='out/tempseries.out',status='unknown')
       open (unit=19,file='out/icelines.out',status='unknown')
       open (unit=20,file='out/dailytempseries.out',status='unknown')   
+      open (unit=53,file='out/convergence.out',status='unknown')
+      write(53,1141)
+ 1141 format('# orbits flag dOLR(W/m2) dTglob(K) asymNS(K)',
+     &  ' [orbits to the halt; flag 1 = convergence test met,',
+     &  ' 0 = iteration cap; final year-to-year changes;',
+     &  ' max |T(k)-T(-k)| of the annual means]')
       open (unit=98,file='data/Altair_inc90_a3.3.txt',status='old')
       open (unit=99,file='data/insolaout.dat',status='old')
       if ( fillet ) then
@@ -432,6 +455,15 @@ c SET UP INITIAL TEMPERATURE PROFILE
            read(7,*) temp(k)
         end do
       end if
+
+c  The pole ghost cells are boundary values held equal to the adjacent belt
+c  (after the belt loop, label 310).  Seed them from the initial profile as
+c  well: until 4.3.0 they kept the DATA value of 273 K through the first
+c  step, so a cold start diffused from a 273 K ghost into each polar belt
+c  across a ghost cell only 0.0038 wide in x, a kick of tens of kelvin that
+c  no warm or cold start was meant to contain.
+      temp(0) = temp(1)
+      temp(nbelts+1) = temp(nbelts)
 
 c----------------------------------------------------------------------c
 c  SET UP LATITUDINAL GRID (BELT BOUNDARIES)
@@ -1523,6 +1555,12 @@ c  ZONAL STATISTICS - if last loop
       znolrsum(k)  = znolrsum(k) + ir(k)
       znasrsum(k)  = znasrsum(k) + s(k)*(1-atoa(k))
       znsurfalbsum(k) = znsurfalbsum(k) + surfalb(k)
+c  Insolation-weighted albedos.  The plain time means above count polar
+c  night (zenith 90 deg, where the table is brightest) at full weight and
+c  do not close the energy budget; these do, as ASR = S (1 - albedo).
+      znssum(k) = znssum(k) + s(k)
+      znalbwsum(k) = znalbwsum(k) + s(k)*atoa(k)
+      znsurfalbwsum(k) = znsurfalbwsum(k) + s(k)*surfalb(k)
 
  310  continue                                     !**end of belt loop
 
@@ -1740,6 +1778,13 @@ c ZONAL SEASONAL AVERAGES
          znolrave(k) = znolrsum(k) / nstep
          znasrave(k) = znasrsum(k) / nstep
          znsurfalbave(k) = znsurfalbsum(k) / nstep
+         if ( znssum(k) .gt. 0. ) then
+           znalbwave(k) = znalbwsum(k) / znssum(k)
+           znsurfalbwave(k) = znsurfalbwsum(k) / znssum(k)
+         else
+           znalbwave(k) = znalbave(k)
+           znsurfalbwave(k) = znsurfalbave(k)
+         end if
          if ( k .le. nbelts/2 ) then
            shtempave = shtempave + zntempave(k)
          else
@@ -1749,14 +1794,22 @@ c ZONAL SEASONAL AVERAGES
       shtempave    = shtempave / (nbelts/2)
       nhtempave    = nhtempave / (nbelts/2)
       print *, "SH/NH temperature difference = ", shtempave - nhtempave
+c  Largest north-south difference of the annual-mean belt temperatures.
+c  With zero eccentricity the forcing is symmetric, so this measures
+c  non-convergence or numerical asymmetry (out/convergence.out).
+      asymns = 0.
+      do k = 1, nbelts/2, 1
+        asymns = max(asymns, abs(zntempave(k)-zntempave(nbelts+1-k)))
+      end do
       zntempave(nbelts+1) = zntempave(nbelts)  !**for ice-line calculation
 
-c  FIND ICE-LINES (ANNUAL-AVERAGE TEMP < icetemp [=263.15K])
+c  FIND ICE-LINES (ANNUAL-AVERAGE TEMP < icelinetemp [default icetemp])
       nedge = 0
       do 740 k=1,nbelts,1
-      if ((zntempave(k+1)-icetemp)*(zntempave(k)-icetemp) .lt. 0.) then
+      if ((zntempave(k+1)-icelinetemp)*(zntempave(k)-icelinetemp)
+     &     .lt. 0.) then
          icelat = latangle(k) + ((latangle(k+1)-latangle(k))/
-     &   (zntempave(k+1)-zntempave(k)))*(icetemp-zntempave(k))
+     &   (zntempave(k+1)-zntempave(k)))*(icelinetemp-zntempave(k))
          nedge = nedge + 1
          iceline(nedge) = icelat
       end if
@@ -1775,9 +1828,9 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
          write(6,753) zntempave(k)
  753     format(2x,f8.3)
          if ( fillet ) then
-           write(50,754) latangle(k), zntempave(k), znsurfalbave(k), 
-     &         znalbave(k), znolrave(k)
- 754       format(f5.1,1x,f6.2,1x,f4.2,1x,f4.2,1x,f6.2)
+           write(50,754) latangle(k), zntempave(k), znsurfalbwave(k),
+     &         znalbwave(k), znolrave(k)
+ 754       format(f5.1,1x,f6.2,1x,f6.4,1x,f6.4,1x,f7.2)
          end if
  750  continue
 
@@ -1793,9 +1846,9 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
  755  format(/ 'SURFACE DATA')
  756  format(2x,'latitude(deg)',2x,'temp(k)',2x,'belt area',
      &  2x,'weathering area',2x,'zonal weathering rate (g/yr)')
-       write(15,760)
- 760  format(/ 'ICE LINES (Tave = 263.15K)')
-      if((nedge.eq.0).and.(zntempave(nbelts/2).le.icetemp)) then
+       write(15,760) icelinetemp
+ 760  format(/ 'ICE LINES (Tave = ',f6.2,'K)')
+      if((nedge.eq.0).and.(zntempave(nbelts/2).le.icelinetemp)) then
         icelineN = 0.0
         icelineS = 0.0
         icelineNMax = 90.0
@@ -1803,7 +1856,8 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
         icelineSMax = 0.0
         icelineSMin = -90.0
       	write(15,*) '  planet is an ice-ball.' 
-      else if((nedge.eq.0).and.(zntempave(nbelts/2).gt.icetemp)) then
+      else if((nedge.eq.0).and.
+     &        (zntempave(nbelts/2).gt.icelinetemp)) then
         icelineN = 90.0
         icelineS = -90.0
         icelineNMax = 90.0
@@ -1817,7 +1871,7 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
  762       format(2x,'ice-line latitude = ',f5.1,' degrees.')
  765    continue
         if((nedge.eq.2)) then
-          if(zntempave(nbelts).le.icetemp) then
+          if(zntempave(nbelts).le.icelinetemp) then
             icelineN = iceline(2)
             icelineS = iceline(1)
             icelineNMax = 90.0
@@ -1832,6 +1886,59 @@ c-nb     &      (zntempmax(k)-zntempmin(k))/2.
             icelineSMax = 0.0
             icelineSMin = iceline(1)
           end if
+        else if (nedge .ge. 3) then
+c         Three or more crossings: a belt and a cap share a hemisphere.
+c         The FILLET columns hold one edge pair per hemisphere, so the cap
+c         (or, under a warm pole, the outermost belt) is reported and the
+c         coexistence is logged here.  Until 4.3.0 this fell through to the
+c         single-crossing branch below and was misreported.
+          nedgeN = 0
+          nedgeS = 0
+          edgeNpole = 0.
+          edgeNeq = 90.
+          edgeSpole = 0.
+          edgeSeq = -90.
+          do k = 1, nedge, 1
+            if ( iceline(k) .gt. 0. ) then
+              nedgeN = nedgeN + 1
+              edgeNpole = max( edgeNpole, iceline(k) )
+              edgeNeq = min( edgeNeq, iceline(k) )
+            else
+              nedgeS = nedgeS + 1
+              edgeSpole = min( edgeSpole, iceline(k) )
+              edgeSeq = max( edgeSeq, iceline(k) )
+            end if
+          end do
+          write(15,*) '  cap and belt coexist; cap reported (nedge = ',
+     &      nedge, ')'
+          if ( nedgeN .eq. 0 ) then
+            icelineNMax = 90.0
+            icelineNMin = merge( 0.0, 90.0,
+     &        zntempave(nbelts) .le. icelinetemp )
+            icelineN = icelineNMin
+          else if ( zntempave(nbelts) .le. icelinetemp ) then
+            icelineNMax = 90.0
+            icelineNMin = edgeNpole
+            icelineN = edgeNpole
+          else
+            icelineNMax = edgeNpole
+            icelineNMin = merge( edgeNeq, 0.0, nedgeN .ge. 2 )
+            icelineN = edgeNpole
+          end if
+          if ( nedgeS .eq. 0 ) then
+            icelineSMin = -90.0
+            icelineSMax = merge( 0.0, -90.0,
+     &        zntempave(1) .le. icelinetemp )
+            icelineS = icelineSMax
+          else if ( zntempave(1) .le. icelinetemp ) then
+            icelineSMin = -90.0
+            icelineSMax = edgeSpole
+            icelineS = edgeSpole
+          else
+            icelineSMin = edgeSpole
+            icelineSMax = merge( edgeSeq, 0.0, nedgeS .ge. 2 )
+            icelineS = edgeSpole
+          end if
         else
 c         Single ice-line crossing: one hemisphere has an edge, the other
 c         is uniform.  Check whether the pole on the crossing side is iced
@@ -1841,7 +1948,7 @@ c         is really a snowball).  Set the opposite, crossing-free hemisphere
 c         from its pole temperature rather than assuming it is glaciated.
 c         zntempave(nbelts) is the north pole belt; zntempave(1) the south.
           if(iceline(1) .gt. 0.0) then
-             if(zntempave(nbelts) .le. icetemp) then
+             if(zntempave(nbelts) .le. icelinetemp) then
 c               genuine north polar cap; southern hemisphere ice-free
                 icelineN = iceline(1)
                 icelineS = -90.0
@@ -1860,7 +1967,7 @@ c               warm sliver at north pole, rest glaciated -> ice-ball
                 write(15,*) '  planet is an ice-ball.'
              end if
           else
-             if(zntempave(1) .le. icetemp) then
+             if(zntempave(1) .le. icelinetemp) then
 c               genuine south polar cap; northern hemisphere ice-free
                 icelineN = 90.0
                 icelineS = iceline(1)
@@ -1884,13 +1991,21 @@ c               warm sliver at south pole, rest glaciated -> ice-ball
       write(19,766) relsolcon, icelineS, icelineN
  766  format(f5.3,2x,f8.3,2x,f8.3)
 
+      write(53,769) nint(yricnt), merge(1, 0, converged), dolrfin,
+     &              dtglobfin, asymns
+ 769  format(i6,1x,i1,1x,es11.3,1x,es11.3,1x,f9.4)
+
+c  Diff is the diffusion coefficient the run USED (d, after any diffadj
+c  rescaling), not the namelist d0: FILLET files filed before 4.3.0 carried
+c  d0 while the model ran 1.10 d0.  Inst and XCO2 are printed with enough
+c  digits to resolve the protocol grids (0.0125 S_earth, 1.26 ppm).
       if ( fillet ) then
-        write(51,768) 0, relsolcon*solarcon/1361.0, obl, 
-     &                   fco2*1.e6, 
-     &                   ann_tempave, icelineNMax, icelineNMin, 
-     &                   icelineSMax, icelineSMin, d0, ann_irave
- 768    format(i1,1x,f4.2,1x,f4.1,1x,f8.1,1x,f6.2,1x,f4.1,1x,f4.1,
-     &         1x,f6.1,1x,f6.2,1x,f4.2,1x,f6.2)
+        write(51,768) 0, relsolcon*solarcon/1361.0, obl,
+     &                   fco2*1.e6,
+     &                   ann_tempave, icelineNMax, icelineNMin,
+     &                   icelineSMax, icelineSMin, d, ann_irave
+ 768    format(i1,1x,f7.4,1x,f4.1,1x,f11.4,1x,f7.2,1x,f5.1,1x,f5.1,
+     &         1x,f6.1,1x,f6.1,1x,f6.4,1x,f7.2)
       end if
 
 c  CO2 CLOUDS
@@ -1939,13 +2054,17 @@ c9997  format(20(2x,f8.3))
       !check for convergence
       if ( iterhalt ) then
 
+        dolrfin = abs(ann_irave - prev_irave)
+        dtglobfin = abs(ann_tempave - prevtempave)
         if( yricnt .ge. niter ) then
           write(*,*) 'Maximum iterations reached (', niter, ' years).'
+          converged = .false.
           goto 1000
         end if
-        if( abs(ann_irave - prev_irave) .lt. fluxcnvg ) then
+        if( dolrfin .lt. fluxcnvg ) then
           write(*,*) 'Flux converged at year ', yricnt,
-     &      ' (dOLR =', abs(ann_irave - prev_irave), 'W/m2)'
+     &      ' (dOLR =', dolrfin, 'W/m2)'
+          converged = .true.
           goto 1000
         end if
         prev_irave = ann_irave
@@ -1955,7 +2074,13 @@ c9997  format(20(2x,f8.3))
 
       else
 
-        if(abs(prevtempave-ann_tempave).lt.cnvg) goto 1000
+        dtglobfin = abs(prevtempave-ann_tempave)
+        dolrfin = abs(ann_irave - prev_irave)
+        prev_irave = ann_irave
+        if(dtglobfin.lt.cnvg) then
+          converged = .true.
+          goto 1000
+        end if
 
       end if
 
@@ -2003,6 +2128,9 @@ c  initialize zntempmin matrix
 
       do 1125 k = 1,nbelts,1
          zntempmin(k) = 1.e30 !**larger than any belt temperature (500 K was not)
+         znssum(k) = 0.
+         znalbwsum(k) = 0.
+         znsurfalbwsum(k) = 0.
  1125 continue
 c
       write(15,1130)
@@ -2014,7 +2142,9 @@ c
 
       if ( fillet ) then
         write(50,1137)
- 1137   format(/ '# Lat Tsurf Asurf ATOA OLR')
+ 1137   format(/ '# Asurf and ATOA are insolation-weighted annual',
+     &    ' means (1 - ASR/S); Tsurf and OLR are time means'
+     &    / '# Lat Tsurf Asurf ATOA OLR')
         write(51,1138)
  1138   format(/ '# Case Inst Obl XCO2 Tglob IceLineNMax IceLineNMin 
      &IceLineSMax IceLineSMin Diff OLRglob')
