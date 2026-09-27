@@ -262,3 +262,37 @@ more where the polar or substellar belts carry steep gradients.
 - Per-case latitude files for the experiments are kept in the repository
   (`fillet/latfiles/`), not filed: the archive README asks for none.
 - Tagging, pushing, the Zenodo deposit and the pull request wait for Jacob.
+
+## 8. Effect on other published results
+
+Checked after the re-file, against the question "does any of this change a
+published number?"
+
+- **As released (switches off):** nothing. The eight regression cases
+  (FILLET Ben1–3, Earth with and without CH4, THAI Hab1, SAMOSA Cases 4 and
+  11) are byte-identical apart from the ghost-cell fix (≤ 0.012 K global,
+  ≤ 0.023 K per belt, only in loosely converged runs).
+- **As physics:** the published THAI, SAMOSA and Earth runs used the
+  non-conservative operator and the 731-step year. With the corrected
+  operator at the published constants they move by +1.7 K (THAI Hab1 global,
+  +5.7 K substellar), +0.9 and +1.7 K (SAMOSA Cases 11 and 4), −0.9 K
+  (Earth). Those configurations are calibrated to targets, so a
+  re-calibration would absorb most of it into (d0, cloudir) and
+  (fcloud, cloudir); the derived sweeps have not been re-run (5.0 work).
+- **Legacy-table duplicate level (249.9–274.9 ppm):** reproduced directly.
+  THAI Hab1 at fco2 = 2.69 × 10⁻⁴ (one column of the published 126 × 50
+  phase diagram) gives 246.4 K with the old loader against 239.8 K corrected
+  at S/S₀ = 1 (albedo 0.043 against 0.074 substellar), a 6.5 K error. The
+  published column, however, matches the corrected value to 0.5 K and is
+  smooth against its neighbours, so it was not computed on the bad cells
+  (the table has been rebuilt since). Earth (280 ppm), THAI Hab1 (400 ppm),
+  FILLET (222.3 and 281.2 ppm bracket the band) and SAMOSA (pressure-resolved
+  tables) never touched it.
+- **Legacy-table sentinel corner:** the unset cells form a triangle, T =
+  190 K alone for fco2 0.41–0.60, up to T ≤ 230 K only at fco2 ≥ 0.90. Five
+  of the 6300 published phase-diagram cells (S/S₀ 0.50–0.56 with fco2 0.39
+  and 0.51, all ice-covered or cold-dayside) have a night side colder than
+  200 K there; their temperatures are biased warm by the sentinel OLR of
+  0.001 W m⁻², their classification is not in doubt, and the guarded loader
+  now refuses those lookups. Recomputing them needs the pressure-resolved
+  2600 K table, which covers the regime.
